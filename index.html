@@ -78,19 +78,19 @@
 const boxW = 110, boxH = 30, size = 5000;
 let svg, g, root, allMembers = [];
 
-/**
- * FETCH DATA FROM CSV FILES
- */
 async function loadFamilyData() {
     try {
+        console.log("Fetching CSVs...");
         const [membersData, linksData] = await Promise.all([
             d3.csv("members.csv"),
             d3.csv("links.csv")
         ]);
+        
         allMembers = membersData;
+        console.log("Data Received. Members:", allMembers.length);
         processData(membersData, linksData);
     } catch (error) {
-        console.error("Error loading CSV files:", error);
+        console.error("Fetch Error:", error);
     }
 }
 
@@ -101,6 +101,11 @@ function processData(members, links) {
     const marriages = links.filter(l => l.type === 'marriage');
     const lineages = links.filter(l => l.type === 'lineage');
 
+    // Automatically find the root (person with no parents in lineage)
+    const childIds = new Set(lineages.map(l => l.child));
+    const rootMember = members.find(mem => !childIds.has(mem.id)) || members[0];
+    console.log("Root Detected:", rootMember.name);
+
     function build(id) {
         const u = m.get(id);
         if (!u) return null;
@@ -109,7 +114,6 @@ function processData(members, links) {
         const spouseId = mar ? (mar.parent === id ? mar.child : mar.parent) : null;
         const sp = spouseId ? m.get(spouseId) : null;
         
-        // Children lookup
         const k = mar ? mar.parent + '+' + mar.child : id;
         const alt = mar ? mar.child + '+' + mar.parent : id;
         
@@ -125,10 +129,13 @@ function processData(members, links) {
         };
     }
 
-    const data = build('DH'); // root ID
-    root = d3.hierarchy(data);
+    root = d3.hierarchy(build(rootMember.id));
     root.x0 = size / 2; root.y0 = 0;
-    root.descendants().forEach(d => { if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
+    
+    // Collapse all except root
+    root.descendants().forEach(d => { 
+        if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } 
+    });
 
     initCanvas();
     renderTree(root);
@@ -192,15 +199,17 @@ function jumpToMember(id) {
     switchTab('tree');
     const target = root.descendants().find(d => d.data.id === id);
     if (target) {
-        let curr = target;
-        while (curr.parent) {
-            if (curr.parent._children) { curr.parent.children = curr.parent._children; curr.parent._children = null; }
-            curr = curr.parent;
-        }
+        target.ancestors().reverse().forEach(d => {
+            if (d._children) { d.children = d._children; d._children = null; }
+        });
         renderTree(target);
         setTimeout(() => {
             const pane = document.getElementById('pane');
-            pane.scrollTo({ left: target.x + (size / 2) - (pane.clientWidth / 2), top: target.y + 100 - (pane.clientHeight / 3), behavior: 'smooth' });
+            pane.scrollTo({ 
+                left: target.x + (size / 2) - (pane.clientWidth / 2), 
+                top: target.y + 100 - (pane.clientHeight / 3), 
+                behavior: 'smooth' 
+            });
             d3.selectAll(".node").classed("highlight-node", false);
             d3.selectAll(".node").filter(d => d.data.id === id).classed("highlight-node", true);
         }, 300);
@@ -219,6 +228,10 @@ function showTab(tab) {
 function renderDirectory(filter = "") {
     const list = document.getElementById('member-list');
     list.innerHTML = "";
+    if (!allMembers || allMembers.length === 0) {
+        list.innerHTML = "<div style='padding:20px;'>Loading members...</div>";
+        return;
+    }
     allMembers.filter(m => m.name.toLowerCase().includes(filter.toLowerCase()))
     .sort((a,b)=>a.name.localeCompare(b.name)).forEach(m => {
         const div = document.createElement('div');
