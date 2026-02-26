@@ -7,25 +7,38 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         :root { --primary: #2c3e50; --accent: #1abc9c; --bg: #f4f7f6; --male: #3498db; --female: #e91e63; }
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+        
         .phone-frame { width: 100%; height: 100%; background: var(--bg); position: relative; display: flex; flex-direction: column; }
         .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; }
+        
         .view-area { flex-grow: 1; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; }
         #canvas { width: 5000px; height: 5000px; background: white; }
+
+        /* Directory View */
         #directory-view { flex-grow: 1; overflow-y: auto; background: white; display: none; padding-bottom: 80px; }
         .directory-header { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 1px solid #eee; z-index: 10; }
         .search-box { width: 100%; padding: 12px; border-radius: 20px; border: 1px solid #ddd; outline: none; font-size: 16px; }
         .member-item { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+
+        /* Tree Elements */
+        .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
+        .node text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
+        .marriage-rect { fill: rgba(248,252,252,0.9); stroke: #94a3b8; stroke-dasharray: 4; stroke-width: 1px; }
+        .highlight-node rect { stroke: #f1c40f !important; stroke-width: 5px !important; filter: drop-shadow(0 0 10px #f1c40f); }
+
+        /* Member Card Modal */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
+        .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; animation: pop 0.3s ease-out; }
+        @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .card-close { position: absolute; top: 10px; right: 15px; font-size: 24px; color: #999; cursor: pointer; }
+
+        /* Nav Bar */
         .bottom-nav { height: 75px; background: #fff; border-top: 1px solid #ddd; display: flex; justify-content: space-around; align-items: center; z-index: 100; }
         .nav-item { text-align: center; font-size: 12px; color: #7f8c8d; flex: 1; cursor: pointer; }
         .nav-item.active { color: var(--accent); font-weight: bold; }
         .nav-item span { font-size: 24px; display: block; }
-        .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
-        .node text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; }
-        .highlight-node rect { stroke: #f1c40f !important; stroke-width: 5px !important; filter: drop-shadow(0 0 10px #f1c40f); }
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
-        .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; }
-        .card-close { position: absolute; top: 10px; right: 15px; font-size: 24px; color: #999; cursor: pointer; }
+        .fab { position: fixed; right: 20px; bottom: 95px; width: 50px; height: 50px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 20; }
     </style>
 </head>
 <body>
@@ -34,13 +47,14 @@
     <div class="member-card" onclick="event.stopPropagation()">
         <span class="card-close" onclick="closeCard()">×</span>
         <h3 id="m-name" style="margin: 0 0 10px 0; color: var(--primary);"></h3>
+        <hr>
         <p id="m-details" style="font-size: 14px; line-height: 1.6; color: #444;"></p>
     </div>
 </div>
 
 <div class="phone-frame">
     <header class="app-header">
-        <div style="font-weight:bold;">Symmetry Family</div>
+        <div style="font-weight:bold;">Symmetry Family App</div>
         <button onclick="location.reload()" style="background:none; border: 1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset</button>
     </header>
 
@@ -55,6 +69,8 @@
         <div id="member-list"></div>
     </div>
 
+    <div class="fab" onclick="centerNode(root)">🏠</div>
+
     <div class="bottom-nav">
         <div class="nav-item active" id="tab-tree" onclick="switchTab('tree')"><span>🌳</span>Tree</div>
         <div class="nav-item" id="tab-members" onclick="switchTab('members')"><span>👥</span>Members</div>
@@ -62,7 +78,104 @@
 </div>
 
 <script>
-// Define switchTab first so it's globally available immediately
+/** * SELF-CONTAINED DATA BLOCK
+ * This contains all members and links from your uploaded files.
+ */
+const rawMembers = [
+    {id:"DH",name:"Dhanpal",gender:"M"}, {id:"IC",name:"Inderchand",gender:"M"}, {id:"HL",name:"Hublaal",gender:"M"},
+    {id:"LR",name:"Lalaram",gender:"M"}, {id:"LUR",name:"Lalluram",gender:"M"}, {id:"PB",name:"Putlibai",gender:"F"},
+    {id:"DC",name:"Deep Chand",gender:"M"}, {id:"PB2",name:"PremBai",gender:"F"}, {id:"SC",name:"Shikhar Chand",gender:"M"},
+    {id:"SD",name:"SheelaDevi",gender:"F"}, {id:"UC",name:"Uttam Chand",gender:"M"}, {id:"SH",name:"Shakun",gender:"F"},
+    {id:"RK",name:"Rajendra Kumar",gender:"M"}, {id:"MN",name:"Meenakshi",gender:"F"}, {id:"KU",name:"Kusum",gender:"F"},
+    {id:"CH",name:"Chanda",gender:"F"}, {id:"MJ",name:"Manjusha",gender:"F"}, {id:"KR",name:"Krishna",gender:"F"},
+    {id:"PS",name:"Pushpa",gender:"F"}, {id:"SHB",name:"Shubha",gender:"F"}, {id:"VIB",name:"Vibha",gender:"F"},
+    {id:"VAI",name:"Vaibhav",gender:"M"}, {id:"VID",name:"Vidit",gender:"M"}, {id:"RIV",name:"Rivaan",gender:"M"},
+    {id:"Swa",name:"Swasti",gender:"F"}, {id:"KK",name:"Duli Chand (Kakka)",gender:"M"}, {id:"KB",name:"KasturiBai",gender:"F"},
+    {id:"C1",name:"Kapoor Chand",gender:"M"}, {id:"MB",name:"Munni Bai",gender:"F"}, {id:"C2",name:"Virendra",gender:"M"},
+    {id:"SK2",name:"Shakun",gender:"F"}, {id:"C3",name:"Ajit",gender:"M"}, {id:"NL",name:"Neelam",gender:"F"},
+    {id:"C4",name:"Anil",gender:"M"}, {id:"MNI",name:"Mani",gender:"F"}, {id:"C5",name:"Sunil",gender:"M"},
+    {id:"RT",name:"Rita",gender:"F"}, {id:"C6",name:"Kamla",gender:"F"}, {id:"SN",name:"Santosh (Male)",gender:"M"},
+    {id:"C7",name:"Prabhadevi",gender:"F"}, {id:"HC",name:"Hukum Chand",gender:"M"}, {id:"D11",name:"Akhilesh",gender:"M"},
+    {id:"RN",name:"Rani",gender:"F"}, {id:"D12",name:"Pari",gender:"F"}, {id:"D13",name:"Saumya",gender:"F"},
+    {id:"D14",name:"Samarth",gender:"M"}, {id:"E11",name:"Archana",gender:"F"}, {id:"AW",name:"Ashwin",gender:"M"},
+    {id:"E12",name:"Gyata",gender:"M"}, {id:"E13",name:"Tatva",gender:"M"}, {id:"F11",name:"Sulochana",gender:"F"},
+    {id:"NS",name:"Nitesh",gender:"M"}, {id:"F12",name:"Shubh",gender:"M"}, {id:"F13",name:"Shubhi",gender:"F"},
+    {id:"F14",name:"Shivi",gender:"F"}, {id:"VV",name:"Vivek",gender:"M"}, {id:"Vk",name:"Vikas",gender:"M"},
+    {id:"Suj",name:"Sujata",gender:"F"}, {id:"Sak",name:"Saksham",gender:"M"}, {id:"Nhi",name:"Nehi",gender:"F"},
+    {id:"Sti",name:"Shrusti",gender:"F"}, {id:"Ssw",name:"Sashwat",gender:"M"}, {id:"Ve",name:"Veer(Sahaj)",gender:"M"},
+    {id:"Ak",name:"Akshay",gender:"M"}, {id:"Jyt",name:"Jyoti",gender:"F"}, {id:"Hit",name:"Hitansh",gender:"M"},
+    {id:"Bn",name:"Bunny",gender:"M"}, {id:"Ncy",name:"Naincy",gender:"F"}, {id:"Smt",name:"Sumit",gender:"M"},
+    {id:"Rud",name:"Rudraksh",gender:"M"}, {id:"Snk",name:"Sanket",gender:"M"}, {id:"Piy",name:"Piyush",gender:"M"},
+    {id:"Prj",name:"Pranjal",gender:"M"}, {id:"Niy",name:"Niyati",gender:"F"}, {id:"SL",name:"ShadiLal",gender:"M"},
+    {id:"SL_W",name:"ShadiLal_W",gender:"F"}, {id:"PC",name:"PuranChand",gender:"M"}, {id:"PC_W",name:"PuranChand_W",gender:"F"},
+    {id:"ML",name:"MijajiLal",gender:"M"}, {id:"MC",name:"MoolChand",gender:"M"}, {id:"MC_W",name:"MoolChand_W",gender:"F"},
+    {id:"GC",name:"GulabChand",gender:"M"}, {id:"BT",name:"3_Betiyan",gender:"F"}, {id:"KC",name:"Khachere",gender:"M"},
+    {id:"SP",name:"Sampat",gender:"M"}, {id:"BI",name:"Bimla",gender:"F"}, {id:"VN",name:"Vinod",gender:"M"},
+    {id:"RS",name:"Rakesh",gender:"M"}, {id:"SUB",name:"Subhash",gender:"M"}, {id:"DL",name:"Dhillan",gender:"M"},
+    {id:"RJ",name:"Raju",gender:"M"}, {id:"DP",name:"Deepu",gender:"M"}, {id:"AN",name:"Anil",gender:"M"},
+    {id:"MU",name:"Mukesh",gender:"M"}, {id:"SU",name:"Sunil",gender:"M"}, {id:"MNM",name:"Muneem",gender:"M"},
+    {id:"LX",name:"Lakshmi",gender:"F"}, {id:"AS",name:"Ashok",gender:"M"}, {id:"AD",name:"Anand",gender:"M"},
+    {id:"ST",name:"Santosh",gender:"M"}, {id:"SS",name:"Sushma",gender:"M"}, {id:"ASI",name:"Ashish",gender:"M"},
+    {id:"RI",name:"Rishabh",gender:"M"}, {id:"AA",name:"Aarti",gender:"F"}, {id:"PO",name:"Pooja",gender:"F"},
+    {id:"JY",name:"Jyoti",gender:"F"}, {id:"ANL",name:"Anshul",gender:"M"}, {id:"NI",name:"Nisha",gender:"F"},
+    {id:"RC",name:"Richa",gender:"F"}, {id:"TN",name:"Tanu",gender:"F"}, {id:"MY",name:"Mayuri",gender:"F"},
+    {id:"JI",name:"Jitendra",gender:"M"}, {id:"PY",name:"Priyanka",gender:"F"}, {id:"ANY",name:"Ananya",gender:"F"},
+    {id:"SHH",name:"Shubh",gender:"M"}, {id:"JT",name:"Jitanshi",gender:"F"}, {id:"NE",name:"Netra",gender:"F"},
+    {id:"AR",name:"Arham",gender:"M"}, {id:"NP",name:"NanaPaksh",gender:"M"}, {id:"NK",name:"NandKishore (Nana)",gender:"M"},
+    {id:"N1",name:"Fadalai",gender:"M"}, {id:"N2",name:"GotuRam",gender:"M"}, {id:"N3",name:"Chunnilal",gender:"M"},
+    {id:"N4",name:"PhoolChand",gender:"M"}, {id:"N5",name:"PuranChand",gender:"M"}, {id:"N6",name:"Ramcharan",gender:"M"},
+    {id:"N7",name:"Mahadev",gender:"M"}, {id:"N8",name:"LakhmiChand",gender:"M"}, {id:"N9",name:"DayaChand",gender:"M"},
+    {id:"N10",name:"BabuLal",gender:"M"}, {id:"N11",name:"UdayLal",gender:"M"}, {id:"N12",name:"Usha",gender:"F"},
+    {id:"N13",name:"Sunita",gender:"F"}, {id:"N14",name:"PhoolBai",gender:"F"}, {id:"N15",name:"Miukesh",gender:"M"},
+    {id:"N16",name:"Sangeeta",gender:"F"}, {id:"N17",name:"Manish",gender:"M"}, {id:"N18",name:"Kalpana",gender:"F"},
+    {id:"N19",name:"Santosh",gender:"M"}, {id:"N20",name:"Neelu",gender:"F"}, {id:"N21",name:"Jhurmuri",gender:"F"},
+    {id:"N22",name:"Imaliya",gender:"F"}
+];
+
+const rawLinks = [
+    {p:"DH",c:"IC",t:"lineage"}, {p:"IC",c:"HL",t:"lineage"}, {p:"IC",c:"LR",t:"lineage"},
+    {p:"LR",c:"LUR",t:"lineage"}, {p:"LR",c:"KK",t:"lineage"}, {p:"LR",c:"SL",t:"lineage"},
+    {p:"LUR",c:"DC",t:"lineage"}, {p:"LUR",c:"SC",t:"lineage"}, {p:"LUR",c:"UC",t:"lineage"},
+    {p:"LUR",c:"RK",t:"lineage"}, {p:"LUR",c:"KU",t:"lineage"}, {p:"LUR",c:"CH",t:"lineage"},
+    {p:"LUR",c:"MJ",t:"lineage"}, {p:"LUR",c:"KR",t:"lineage"}, {p:"LUR",c:"PS",t:"lineage"},
+    {p:"UC",c:"SHB",t:"lineage"}, {p:"UC",c:"VIB",t:"lineage"}, {p:"UC",c:"VAI",t:"lineage"},
+    {p:"KK",c:"C1",t:"lineage"}, {p:"KK",c:"C2",t:"lineage"}, {p:"KK",c:"C3",t:"lineage"},
+    {p:"KK",c:"C4",t:"lineage"}, {p:"KK",c:"C5",t:"lineage"}, {p:"KK",c:"C6",t:"lineage"},
+    {p:"KK",c:"C7",t:"lineage"}, {p:"C1",c:"D11",t:"lineage"}, {p:"C1",c:"E11",t:"lineage"},
+    {p:"C1",c:"F11",t:"lineage"}, {p:"D11",c:"D12",t:"lineage"}, {p:"D11",c:"D13",t:"lineage"},
+    {p:"D11",c:"D14",t:"lineage"}, {p:"E11",c:"E12",t:"lineage"}, {p:"E11",c:"E13",t:"lineage"},
+    {p:"F11",c:"F12",t:"lineage"}, {p:"F11",c:"F13",t:"lineage"}, {p:"F11",c:"F14",t:"lineage"},
+    {p:"SL",c:"PC",t:"lineage"}, {p:"SL",c:"ML",t:"lineage"}, {p:"SL",c:"MC",t:"lineage"},
+    {p:"SL",c:"GC",t:"lineage"}, {p:"SL",c:"BT",t:"lineage"}, {p:"PC",c:"KC",t:"lineage"},
+    {p:"PC",c:"SP",t:"lineage"}, {p:"PC",c:"BI",t:"lineage"}, {p:"SP",c:"VN",t:"lineage"},
+    {p:"SP",c:"RS",t:"lineage"}, {p:"BI",c:"SUB",t:"lineage"}, {p:"BI",c:"DL",t:"lineage"},
+    {p:"BI",c:"RJ",t:"lineage"}, {p:"BI",c:"DP",t:"lineage"}, {p:"BI",c:"AN",t:"lineage"},
+    {p:"BI",c:"MU",t:"lineage"}, {p:"BI",c:"SU",t:"lineage"}, {p:"BI",c:"MNM",t:"lineage"},
+    {p:"BI",c:"LX",t:"lineage"}, {p:"MC",c:"AS",t:"lineage"}, {p:"MC",c:"AD",t:"lineage"},
+    {p:"MC",c:"ST",t:"lineage"}, {p:"MC",c:"SS",t:"lineage"}, {p:"AS",c:"ASI",t:"lineage"},
+    {p:"AS",c:"RI",t:"lineage"}, {p:"AS",c:"AA",t:"lineage"}, {p:"AS",c:"PO",t:"lineage"},
+    {p:"AS",c:"JY",t:"lineage"}, {p:"AD",c:"ANL",t:"lineage"}, {p:"AD",c:"NI",t:"lineage"},
+    {p:"ST",c:"RC",t:"lineage"}, {p:"ST",c:"TN",t:"lineage"}, {p:"ST",c:"MY",t:"lineage"},
+    {p:"SS",c:"JI",t:"lineage"}, {p:"SS",c:"PY",t:"lineage"}, {p:"ASI",c:"ANY",t:"lineage"},
+    {p:"ASI",c:"SHH",t:"lineage"}, {p:"ASI",c:"JT",t:"lineage"}, {p:"AA",c:"NE",t:"lineage"},
+    {p:"AA",c:"AR",t:"lineage"}, {p:"VAI",c:"VID",t:"lineage"}, {p:"VAI",c:"RIV",t:"lineage"},
+    {p:"VV",c:"Sak",t:"lineage"}, {p:"VV",c:"Nhi",t:"lineage"}, {p:"Vk",c:"Ssw",t:"lineage"},
+    {p:"Vk",c:"Ve",t:"lineage"}, {p:"Ak",c:"Hit",t:"lineage"}, {p:"Ak",c:"Bn",t:"lineage"},
+    {p:"Ncy",c:"Rud",t:"lineage"}, {p:"C4",c:"Snk",t:"lineage"}, {p:"C4",c:"Piy",t:"lineage"},
+    {p:"C5",c:"Prj",t:"lineage"}, {p:"C2",c:"VV",t:"lineage"}, {p:"C2",c:"Vk",t:"lineage"},
+    {p:"C3",c:"Ak",t:"lineage"}, {p:"C3",c:"Hit",t:"lineage"}, {p:"C3",c:"Ncy",t:"lineage"},
+    {p:"PB",c:"LUR",t:"marriage"}, {p:"NK",c:"N21",t:"marriage"}, {p:"PB2",c:"DC",t:"marriage"},
+    {p:"SL",c:"SL_W",t:"marriage"}, {p:"PC",c:"PC_W",t:"marriage"}, {p:"MC",c:"MC_W",t:"marriage"},
+    {p:"SD",c:"SC",t:"marriage"}, {p:"SH",c:"UC",t:"marriage"}, {p:"MN",c:"RK",t:"marriage"},
+    {p:"KB",c:"KK",t:"marriage"}, {p:"MB",c:"C1",t:"marriage"}, {p:"SK2",c:"C2",t:"marriage"},
+    {p:"NL",c:"C3",t:"marriage"}, {p:"MNI",c:"C4",t:"marriage"}, {p:"RT",c:"C5",t:"marriage"},
+    {p:"C6",c:"SN",t:"marriage"}, {p:"C7",c:"HC",t:"marriage"}, {p:"RN",c:"D11",t:"marriage"},
+    {p:"E11",c:"AW",t:"marriage"}, {p:"F11",c:"NS",t:"marriage"}, {p:"VAI",c:"Swa",t:"marriage"},
+    {p:"VV",c:"Suj",t:"marriage"}, {p:"Vk",c:"Sti",t:"marriage"}, {p:"Ak",c:"Jyt",t:"marriage"},
+    {p:"Ncy",c:"Smt",t:"marriage"}, {p:"Prj",c:"Niy",t:"marriage"}
+];
+
+// Switch Tabs
 function switchTab(tab) {
     const isTree = (tab === 'tree');
     document.getElementById('pane').style.display = isTree ? 'block' : 'none';
@@ -73,78 +186,40 @@ function switchTab(tab) {
 }
 
 const boxW = 110, boxH = 30, size = 5000;
-let svg, g, root, allMembers = [];
+let svg, g, root;
 
-async function loadFamilyData() {
-    try {
-        const [membersData, linksData] = await Promise.all([
-            d3.csv("members.csv"),
-            d3.csv("links.csv")
-        ]);
-        allMembers = membersData;
-        processData(membersData, linksData);
-    } catch (error) {
-        console.error("CSV Loading Error:", error);
-    }
-}
-
-function processData(members, links) {
+function init() {
     const m = new Map();
-    // Normalize headers to lowercase for internal logic
-    members.forEach(member => {
-        const normalized = {
-            id: member.id || member.ID,
-            name: member.name || member.Name,
-            gender: member.gender || member.Gender,
-            age: member.age || member.Age,
-            location: member.location || member.Location,
-            phone: member.phone || member.Phone
-        };
-        m.set(normalized.id, normalized);
-    });
-
-    const marriages = links.filter(l => l.type === 'marriage');
-    const lineages = links.filter(l => l.type === 'lineage');
+    rawMembers.forEach(mem => m.set(mem.id, mem));
+    const marriages = rawLinks.filter(l => l.t === 'marriage');
+    const lineages = rawLinks.filter(l => l.t === 'lineage');
 
     function build(id) {
-        const u = m.get(id);
-        if (!u) return null;
-        const mar = marriages.find(x => x.parent === id || x.child === id);
-        const spouseId = mar ? (mar.parent === id ? mar.child : mar.parent) : null;
+        const u = m.get(id); if (!u) return null;
+        const mar = marriages.find(x => x.p === id || x.c === id);
+        const spouseId = mar ? (mar.p === id ? mar.c : mar.p) : null;
         const sp = spouseId ? m.get(spouseId) : null;
-        const k = mar ? mar.parent + '+' + mar.child : id;
-        const alt = mar ? mar.child + '+' + mar.parent : id;
-        const ch = lineages.filter(r => r.parent === k || r.parent === alt || r.parent === id)
-                           .map(r => build(r.child)).filter(x => x);
+        const k = mar ? mar.p + '+' + mar.c : id, alt = mar ? mar.c + '+' + mar.p : id;
+        const ch = lineages.filter(r => r.p === k || r.p === alt || r.p === id).map(r => build(r.c)).filter(x => x);
         return { ...u, spouse: sp, children: ch.length ? ch : null, _direct: ch.length, _total: ch.reduce((a, c) => a + 1 + (c._total || 0), 0) };
     }
 
-    // Creating a Ghost Root to show both DH and NP branches side-by-side
-    const ghostRoot = {
-        id: "ROOT", name: "Family Tree", gender: "M",
-        children: [build('DH'), build('NP')].filter(x => x)
-    };
-
-    root = d3.hierarchy(ghostRoot);
+    // Ghost root for multi-branch
+    const ghost = { id: "ROOT", name: "Family", children: [build('DH'), build('NP')].filter(x => x) };
+    root = d3.hierarchy(ghost);
     root.x0 = size / 2; root.y0 = 0;
-    root.descendants().forEach(d => { 
-        if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } 
-    });
+    root.descendants().forEach(d => { if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
 
-    initCanvas();
-    renderTree(root);
-}
-
-function initCanvas() {
-    d3.select("#canvas").selectAll("*").remove();
     svg = d3.select("#canvas").append("svg").attr("width", size).attr("height", size);
     g = svg.append("g").attr("transform", `translate(${size / 2}, 100)`);
+    renderTree(root);
+    centerNode(root.children[0]);
 }
 
 function renderTree(source) {
     const tree = d3.tree().nodeSize([boxW * 2.8, 140]);
     tree(root);
-    const nodes = root.descendants().filter(d => d.depth > 0); // Hide Ghost Root
+    const nodes = root.descendants().filter(d => d.depth > 0);
     const links = root.links().filter(d => d.source.depth > 0);
 
     const link = g.selectAll(".link").data(links, d => d.target.data.id);
@@ -159,19 +234,19 @@ function renderTree(source) {
     nE.each(function (d) {
         const el = d3.select(this);
         if (d.data.spouse) {
-            el.append("rect").attr("x", -boxW - 10).attr("y", -boxH / 2 - 5).attr("width", boxW * 2 + 20).attr("height", boxH + 15).style("fill","rgba(240,240,240,0.8)").style("stroke","#999").style("stroke-dasharray","4");
-            drawIndiv(el, d.data, -boxW / 2 - 5); drawIndiv(el, d.data.spouse, boxW / 2 + 5);
-        } else { drawIndiv(el, d.data, 0); }
+            el.append("rect").attr("class", "marriage-rect").attr("x", -boxW - 10).attr("y", -boxH / 2 - 5).attr("width", boxW * 2 + 20).attr("height", boxH + 15);
+            drawBox(el, d.data, -boxW / 2 - 5); drawBox(el, d.data.spouse, boxW / 2 + 5);
+        } else drawBox(el, d.data, 0);
 
         if (d.children || d._children) {
-            const ui = el.append("g").attr("transform", `translate(0, ${boxH / 2 + 12})`).on("click", (e, nodeD) => {
+            const ui = el.append("g").attr("transform", `translate(0, ${boxH / 2 + 12})`).on("click", (e, n) => {
                 e.stopPropagation();
-                if (nodeD.children) { nodeD._children = nodeD.children; nodeD.children = null; }
-                else { nodeD.children = nodeD._children; nodeD._children = null; }
-                renderTree(nodeD);
+                if (n.children) { n._children = n.children; n.children = null; }
+                else { n.children = n._children; n._children = null; }
+                renderTree(n);
             });
-            ui.append("rect").attr("x", -20).attr("y", -7).attr("width", 40).attr("height", 14).attr("fill", "#2c3e50").attr("rx", 7);
-            ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "10px").text(`${d.data._direct}|${d.data._total}`);
+            ui.append("rect").attr("class", "badge-rect").attr("x", -20).attr("y", -7).attr("width", 40).attr("height", 14);
+            ui.append("text").attr("class", "badge-text").attr("y", 4).text(`${d.data._direct}|${d.data._total}`);
             ui.append("circle").attr("cy", 18).attr("r", 7).attr("fill", "white").attr("stroke", "#2c3e50");
             ui.append("text").attr("y", 22).attr("text-anchor", "middle").style("fill", "#2c3e50").style("font-size", "12px").text(d.children ? "-" : "+");
         }
@@ -179,50 +254,51 @@ function renderTree(source) {
     nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
 }
 
-function drawIndiv(c, d, o) {
-    const group = c.append("g").on("click", (e) => { e.stopPropagation(); showCard(d); });
-    group.append("rect").attr("x", o - boxW / 2).attr("y", -boxH / 2).attr("width", boxW).attr("height", boxH).attr("fill", d.gender === 'M' ? '#3498db' : '#e91e63');
-    group.append("text").attr("x", o).attr("y", 5).style("fill", "white").style("font-weight", "bold").style("text-anchor", "middle").text(d.name);
+function drawBox(c, d, o) {
+    const g = c.append("g").on("click", (e) => { e.stopPropagation(); showCard(d); });
+    g.append("rect").attr("x", o - boxW / 2).attr("y", -boxH / 2).attr("width", boxW).attr("height", boxH).attr("fill", d.gender === 'M' ? '#3498db' : '#e91e63');
+    g.append("text").attr("x", o).attr("y", 5).text(d.name);
 }
 
 function jumpToMember(id) {
     switchTab('tree');
     const target = root.descendants().find(d => d.data.id === id);
     if (target) {
-        target.ancestors().reverse().forEach(d => {
-            if (d._children) { d.children = d._children; d._children = null; }
-        });
+        target.ancestors().reverse().forEach(d => { if (d._children) { d.children = d._children; d._children = null; } });
         renderTree(target);
         setTimeout(() => {
-            const pane = document.getElementById('pane');
-            pane.scrollTo({ left: target.x + (size / 2) - (pane.clientWidth / 2), top: target.y + 100 - (pane.clientHeight / 3), behavior: 'smooth' });
+            centerNode(target);
             d3.selectAll(".node").classed("highlight-node", false);
             d3.selectAll(".node").filter(d => d.data.id === id).classed("highlight-node", true);
-        }, 300);
+        }, 350);
     }
 }
 
 function renderDirectory(filter = "") {
     const list = document.getElementById('member-list');
     list.innerHTML = "";
-    allMembers.filter(m => (m.name || m.Name || "").toLowerCase().includes(filter.toLowerCase()))
-    .sort((a,b)=> (a.name || a.Name || "").localeCompare(b.name || b.Name || "")).forEach(m => {
+    rawMembers.filter(m => m.name.toLowerCase().includes(filter.toLowerCase()))
+    .sort((a,b)=>a.name.localeCompare(b.name)).forEach(m => {
         const div = document.createElement('div');
         div.className = 'member-item';
-        div.innerHTML = `<div><b>${m.name || m.Name}</b><br><small>ID: ${m.id || m.ID}</small></div><span>➔</span>`;
-        div.onclick = () => jumpToMember(m.id || m.ID);
+        div.innerHTML = `<div><b>${m.name}</b><br><small>ID: ${m.id}</small></div><span>➔</span>`;
+        div.onclick = () => jumpToMember(m.id);
         list.appendChild(div);
     });
 }
 
 function showCard(d) {
     document.getElementById('m-name').innerText = d.name;
-    document.getElementById('m-details').innerHTML = `<b>ID:</b> ${d.id}<br><b>Gender:</b> ${d.gender}<br><b>Age:</b> ${d.age || 'N/A'}<br><b>Loc:</b> ${d.location || 'N/A'}<br><b>Ph:</b> ${d.phone || 'N/A'}`;
+    document.getElementById('m-details').innerHTML = `<b>ID:</b> ${d.id}<br><b>Gender:</b> ${d.gender === 'M' ? 'Male' : 'Female'}<br><b>Location:</b> N/A`;
     document.getElementById('modal').style.display = 'flex';
 }
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
+function centerNode(d) {
+    const p = document.getElementById('pane');
+    p.scrollTo({ left: d.x + (size / 2) - (p.clientWidth / 2), top: d.y + 100 - (p.clientHeight / 3), behavior: 'smooth' });
+}
 
-window.onload = loadFamilyData;
+window.onload = init;
 </script>
 </body>
 </html>
