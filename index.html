@@ -1,251 +1,242 @@
-<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><title>Family App Simulator</title><script src="https://d3js.org/d3.v7.min.js"></script><style>:root{--primary:#2c3e50;--accent:#1abc9c;--bg:#f4f7f6;--male:#3498db;--female:#e91e63;}body,html{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;}.phone-frame{width:100%;height:100%;background:var(--bg);position:relative;display:flex;flex-direction:column;}.app-header{height:60px;background:var(--primary);color:white;display:flex;align-items:center;padding:0 20px;box-shadow:0 2px 5px rgba(0,0,0,0.1);font-weight:bold;z-index:10;}.view-area{flex-grow:1;overflow:auto;position:relative;-webkit-overflow-scrolling:touch;}#canvas{width:5000px;height:5000px;}.bottom-nav{height:70px;background:#fff;border-top:1px solid #ddd;display:flex;justify-content:space-around;align-items:center;z-index:10;}.nav-item{text-align:center;font-size:10px;color:#7f8c8d;}.node rect{rx:4;ry:4;}.node text{fill:white;font-weight:bold;font-size:11px;text-anchor:middle;}.link{fill:none;stroke:#cbd5e0;stroke-width:2px;}.badge-rect{fill:#2c3e50;rx:10;ry:10;}.badge-text{fill:#fff;font-size:10px;font-weight:bold;}.toggle-circle{fill:#fff;stroke:#2c3e50;stroke-width:1px;}.toggle-icon{fill:#2c3e50;font-size:12px;font-weight:bold;text-anchor:middle;}.marriage-rect{fill:rgba(248,252,252,0.9);stroke:#94a3b8;stroke-dasharray:4;stroke-width:1px;}.fab{position:fixed;right:20px;bottom:90px;width:56px;height:56px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;box-shadow:0 4px 10px rgba(0,0,0,0.3);font-size:24px;z-index:20;}</style></head><body><div class="phone-frame"><div class="app-header">Symmetry Family App</div><div class="view-area" id="pane"><div id="canvas"></div></div><div class="fab" onclick="resetView()">🏠</div><div class="bottom-nav"><div class="nav-item">🌳<br>Tree</div><div class="nav-item">👥<br>Members</div><div class="nav-item">⚙️<br>Settings</div></div></div><textarea id="d" style="display:none">// 1. Members (ID | Name | Gender | Age | Location | Phone)
-// --- Gen 0 & 1 ---
-DH | Dhanpal | M | | | 
-IC | Inderchand | M | | | 
-HL | Hublaal | M | | | 
-LR | Lalaram | M | | | 
-LUR | Lalluram | M | | | 
-PB | Putlibai | F | | | 
-DC | Deep Chand | M | | | 
-PB2 | PremBai | F | | | 
-SC | Shikhar Chand | M | | | 
-SD | SheelaDevi | F | | | 
-UC | Uttam Chand | M | | | 
-SH | Shakun | F | | | 
-RK | Rajendra Kumar | M | | | 
-MN | Meenakshi | F | | | 
-KU | Kusum | F | | | 
-CH | Chanda | F | | | 
-MJ | Manjusha | F | | | 
-KR | Krishna | F | | | 
-PS | Pushpa | F | | | 
-SHB | Shubha | F | | | 
-VIB | Vibha | F | | | 
-VAI | Vaibhav | M | | | 
-VID | Vidit | M | | | 
-RIV | Rivaan | M | | | 
-Swa | Swasti | F | | | 
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Symmetry Family App</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root { --primary: #2c3e50; --accent: #1abc9c; --bg: #f4f7f6; --male: #3498db; --female: #e91e63; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+        
+        .phone-frame { width: 100%; height: 100%; background: var(--bg); position: relative; display: flex; flex-direction: column; }
+        .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; }
+        
+        .view-area { flex-grow: 1; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; }
+        #canvas { width: 5000px; height: 5000px; background: white; }
 
-// --- Gen 3 (Kakka's Branch) ---
-KK | Duli Chand (Kakka) | M | | | 
-KB | KasturiBai | F | | | 
-C1 | Kapoor Chand | M | | | 
-MB | Munni Bai | F | | | 
-C2 | Virendra | M | | | 
-SK2 | Shakun | F | | | 
-C3 | Ajit | M | | | 
-NL | Neelam | F | | | 
-C4 | Anil | M | | | 
-MNI | Mani | F | | | 
-C5 | Sunil | M | | | 
-RT | Rita | F | | | 
-C6 | Kamla | F | | | 
-SN | Santosh (Male) | M | | | 
-C7 | Prabhadevi | F | | | 
-HC | Hukum Chand | M | | | 
-D11 | Akhilesh | M | | | 
-RN | Rani | F | | | 
-D12 | Pari | F | | | 
-D13 | Saumya | F | | | 
-D14 | Samarth | M | | | 
-E11 | Archana | F | | | 
-AW | Ashwin | M | | | 
-E12 | Gyata | M | | | 
-E13 | Tatva | M | | | 
-F11 | Sulochana | F | | | 
-NS | Nitesh | M | | | 
-F12 | Shubh | M | | | 
-F13 | Shubhi | F | | | 
-F14 | Shivi | F | | | 
-VV | Vivek | M | | | 
-Vk | Vikas | M | | | 
-Suj | Sujata | F | | | 
-Sak | Saksham | M | | | 
-Nhi | Nehi | F | | | 
-Sti | Shrusti | F | | | 
-Ssw | Sashwat | M | | | 
-Ve | Veer(Sahaj) | M | | | 
+        /* Directory */
+        #directory-view { flex-grow: 1; overflow-y: auto; background: white; display: none; padding-bottom: 80px; }
+        .directory-header { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 1px solid #eee; z-index: 10; }
+        .search-box { width: 100%; padding: 12px; border-radius: 20px; border: 1px solid #ddd; outline: none; font-size: 16px; }
+        .member-item { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
 
-Ak | Akshay | M | | | 
-Jyt | Jyoti | F | | | 
-Hit | Hitansh | M | | | 
-Bn | Bunny | M | | | 
-Ncy | Naincy | F | | | 
-Smt | Sumit | M | | | 
-Rud | Rudraksh | M | | | 
-Snk | Sanket | M | | | 
-Piy | Piyush | M | | | 
-Prj | Pranjal | M | | | 
-Niy | Niyati | F | | | 
+        /* Nodes & Links */
+        .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
+        .node text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
+        .marriage-rect { fill: rgba(248,252,252,0.9); stroke: #94a3b8; stroke-dasharray: 4; stroke-width: 1px; }
+        .highlight-node rect { stroke: #f1c40f !important; stroke-width: 5px !important; filter: drop-shadow(0 0 10px #f1c40f); }
 
+        /* Member Card Modal */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
+        .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; animation: pop 0.3s ease-out; }
+        @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .card-close { position: absolute; top: 10px; right: 15px; font-size: 24px; color: #999; cursor: pointer; }
 
+        /* Navigation */
+        .bottom-nav { height: 75px; background: #fff; border-top: 1px solid #ddd; display: flex; justify-content: space-around; align-items: center; z-index: 100; }
+        .nav-item { text-align: center; font-size: 12px; color: #7f8c8d; flex: 1; cursor: pointer; }
+        .nav-item.active { color: var(--accent); font-weight: bold; }
+        .nav-item span { font-size: 24px; display: block; }
+    </style>
+</head>
+<body>
 
-// --- Gen 4 (ShadiLal's Branch) ---
-SL | ShadiLal | M | | | 
-SL_W | ShadiLal_W | F | | | 
-PC | PuranChand | M | | | 
-PC_W | PuranChand_W | F | | | 
-ML | MijajiLal | M | | | 
-MC | MoolChand | M | | | 
-MC_W | MoolChand_W | F | | | 
-GC | GulabChand | M | | | 
-BT | 3_Betiyan | F | | | 
-KC | Khachere | M | | | 
-SP | Sampat | M | | | 
-BI | Bimla | F | | | 
-VN | Vinod | M | | | 
-RS | Rakesh | M | | | 
-SUB | Subhash | M | | | 
-DL | Dhillan | M | | | 
-RJ | Raju | M | | | 
-DP | Deepu | M | | | 
-AN | Anil | M | | | 
-MU | Mukesh | M | | | 
-SU | Sunil | M | | | 
-MNM | Muneem | M | | | 
-LX | Lakshmi | F | | | 
-AS | Ashok | M | | | 
-AD | Anand | M | | | 
-ST | Santosh | M | | | 
-SS | Sushma | M | | | 
-ASI | Ashish | M | | | 
-RI | Rishabh | M | | | 
-AA | Aarti | F | | | 
-PO | Pooja | F | | | 
-JY | Jyoti | F | | | 
-ANL | Anshul | M | | | 
-NI | Nisha | F | | | 
-RC | Richa | F | | | 
-TN | Tanu | F | | | 
-MY | Mayuri | F | | | 
-JI | Jitendra | M | | | 
-PY | Priyanka | F | | | 
-ANY | Ananya | F | | | 
-SHH | Shubh | M | | | 
-JT | Jitanshi | F | | | 
-NE | Netra | F | | | 
-AR | Arham | M | | | 
+<div class="modal-overlay" id="modal" onclick="closeCard()">
+    <div class="member-card" onclick="event.stopPropagation()">
+        <span class="card-close" onclick="closeCard()">×</span>
+        <h3 id="m-name" style="margin: 0 0 10px 0; color: var(--primary);"></h3>
+        <hr>
+        <p id="m-details" style="font-size: 14px; line-height: 1.6; color: #444;"></p>
+    </div>
+</div>
 
-// 2. Marriages (Wife_ID + Husband_ID)
-PB + LUR
-PB2 + DC
-SL + SL_W
-PC + PC_W
-MC + MC_W
-SD + SC
-SH + UC
-MN + RK
-KB + KK
-MB + C1
-SK2 + C2
-NL + C3
-MNI + C4
-RT + C5
-C6 + SN
-C7 + HC
-RN + D11
-E11 + AW
-F11 + NS
-VAI + Swa
-VV + Suj
-Vk + Sti
-Ak + Jyt
-Ncy + Smt
-Prj + Niy
+<div class="phone-frame">
+    <header class="app-header">
+        <div style="font-weight:bold;">Symmetry Family</div>
+        <button onclick="location.reload()" style="background:none; border:1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset</button>
+    </header>
 
-// 3. Lineage (Parent -> Child)
-DH -> IC
-IC -> HL
-IC -> LR
-LR -> LUR
-LR -> KK
-LR -> SL
-LUR -> DC
-LUR -> SC
-LUR -> UC
-LUR -> RK
-LUR -> KU
-LUR -> CH
-LUR -> MJ
-LUR -> KR
-LUR -> PS
-UC -> SHB
-UC -> VIB
-UC -> VAI
-KK -> C1
-KK -> C2
-KK -> C3
-KK -> C4
-KK -> C5
-KK -> C6
-KK -> C7
-C1 -> D11
-C1 -> E11
-C1 -> F11
-D11 -> D12
-D11 -> D13
-D11 -> D14
-E11 -> E12
-E11 -> E13
-F11 -> F12
-F11 -> F13
-F11 -> F14
-SL -> PC
-SL -> ML
-SL -> MC
-SL -> GC
-SL -> BT
-PC -> KC
-PC -> SP
-PC -> BI
-SP -> VN
-SP -> RS
-BI -> SUB
-BI -> DL
-BI -> RJ
-BI -> DP
-BI -> AN
-BI -> MU
-BI -> SU
-BI -> MNM
-BI -> LX
-MC -> AS
-MC -> AD
-MC -> ST
-MC -> SS
-AS -> ASI
-AS -> RI
-AS -> AA
-AS -> PO
-AS -> JY
-AD -> ANL
-AD -> NI
-ST -> RC
-ST -> TN
-ST -> MY
-SS -> JI
-SS -> PY
-ASI -> ANY
-ASI -> SHH
-ASI -> JT
-AA -> NE
-AA -> AR
-VAI -> VID
-VAI -> RIV
-VV -> Sak
-VV -> Nhi
-Vk -> Ssw
-Vk -> Ve
-Ak -> Hit
-Ak -> Bn
-//C3 -> Ncy
-Ncy -> Rud
-C4 -> Snk
-C4 -> Piy
-C5-> Prj
-C2 -> VV
-C2 -> Vk
-C3 -> Ak
-C3 -> Hit
-C3 -> Ncy
-</textarea><script>const boxW=110,boxH=28,size=5000;let svg,g,root;function parse(){const m=new Map(),ma=[],rel=[],t=document.getElementById('d').value;t.split('\n').forEach(l=>{const c=l.trim();if(!c||c.startsWith('//'))return;if(c.includes('|')){const p=c.split('|').map(s=>s.trim());m.set(p[0],{id:p[0],name:p[1],gender:p[2]});}else if(c.includes('+')&&!c.includes('->')){const p=c.split('+').map(s=>s.trim());ma.push({p1:p[0],p2:p[1]});}else if(c.includes('->')){const p=c.split('->').map(s=>s.trim());rel.push({parent:p[0],child:p[1]});}});function build(id){const u=m.get(id);if(!u)return null;const mar=ma.find(x=>x.p1===id||x.p2===id),s=mar?(mar.p1===id?mar.p2:mar.p1):null,sp=s?m.get(s):null;const k=mar?mar.p1+'+'+mar.p2:id,alt=mar?mar.p2+'+'+mar.p1:id;const ch=rel.filter(r=>r.parent===k||r.parent===alt||r.parent===id).map(r=>build(r.child)).filter(x=>x);return{...u,spouse:sp,children:ch.length?ch:null,_direct:ch.length,_total:ch.reduce((a,c)=>a+1+(c._total||0),0)};}return build('DH');}function render(source){const tree=d3.tree().nodeSize([boxW*2.8,120]);tree(root);const nodes=root.descendants(),links=root.links();const link=g.selectAll(".link").data(links,d=>d.target.data.id);link.exit().remove();link.enter().append("path").attr("class","link").merge(link).transition().duration(500).attr("d",d3.linkVertical().x(d=>d.x).y(d=>d.y));const node=g.selectAll(".node").data(nodes,d=>d.data.id);node.exit().remove();const nE=node.enter().append("g").attr("class","node").attr("transform",d=>"translate("+(source.x0||0)+","+(source.y0||0)+")").on("click",(e,d)=>{if(d.children){d._children=d.children;d.children=null;}else if(d._children){d.children=d._children;d._children=null;if(d.children)d.children.forEach(c=>{if(c.children){c._children=c.children;c.children=null;}});}render(d);center(d);});node.merge(nE).transition().duration(500).attr("transform",d=>"translate("+d.x+","+d.y+")");nE.each(function(d){const el=d3.select(this);if(d.data.spouse){el.append("rect").attr("class","marriage-rect").attr("x",-boxW-10).attr("y",-boxH/2-5).attr("width",boxW*2+20).attr("height",boxH+15);dr(el,d.data,-boxW/2-5);dr(el,d.data.spouse,boxW/2+5);}else{dr(el,d.data,0);}});const ind=node.merge(nE).filter(d=>d.children||d._children);ind.selectAll(".ui-grp").remove();const ui=ind.append("g").attr("class","ui-grp").attr("transform","translate(0,"+(boxH/2+10)+")");ui.append("rect").attr("class","badge-rect").attr("x",-20).attr("y",-7).attr("width",40).attr("height",14);ui.append("text").attr("class","badge-text").attr("y",4).attr("text-anchor","middle").text(d=>d.data._direct+"|"+d.data._total);ui.append("circle").attr("class","toggle-circle").attr("cy",18).attr("r",7);ui.append("text").attr("class","toggle-icon").attr("y",22).text(d=>d.children?"-":"+");nodes.forEach(d=>{d.x0=d.x;d.y0=d.y;});}function dr(c,d,o){c.append("rect").attr("x",o-boxW/2).attr("y",-boxH/2).attr("width",boxW).attr("height",boxH).attr("fill",d.gender==='M'?'#3498db':'#e91e63');c.append("text").attr("x",o).attr("y",5).text(d.name);}function center(d){const p=document.getElementById('pane');p.scrollTo({left:d.x+(size/2)-(p.clientWidth/2),top:d.y+100-(p.clientHeight/3),behavior:'smooth'});}function resetView(){center(root);}window.onload=()=>{svg=d3.select("#canvas").append("svg").attr("width",size).attr("height",size);g=svg.append("g").attr("transform","translate("+(size/2)+",100)");root=d3.hierarchy(parse());root.x0=size/2;root.y0=0;root.descendants().forEach(d=>{if(d.depth>0&&d.children){d._children=d.children;d.children=null;}});render(root);center(root);};</script></body></html>
+    <div class="view-area" id="pane">
+        <div id="canvas"></div>
+    </div>
+
+    <div id="directory-view">
+        <div class="directory-header">
+            <input type="text" class="search-box" placeholder="Search by name..." onkeyup="renderDirectory(this.value)">
+        </div>
+        <div id="member-list"></div>
+    </div>
+
+    <div class="bottom-nav">
+        <div class="nav-item active" id="tab-tree" onclick="switchTab('tree')"><span>🌳</span>Tree</div>
+        <div class="nav-item" id="tab-members" onclick="switchTab('members')"><span>👥</span>Members</div>
+    </div>
+</div>
+
+<script>
+const boxW = 110, boxH = 30, size = 5000;
+let svg, g, root, allMembers = [];
+
+/**
+ * FETCH DATA FROM CSV FILES
+ */
+async function loadFamilyData() {
+    try {
+        const [membersData, linksData] = await Promise.all([
+            d3.csv("members.csv"),
+            d3.csv("links.csv")
+        ]);
+        allMembers = membersData;
+        processData(membersData, linksData);
+    } catch (error) {
+        console.error("Error loading CSV files:", error);
+    }
+}
+
+function processData(members, links) {
+    const m = new Map();
+    members.forEach(member => m.set(member.id, member));
+
+    const marriages = links.filter(l => l.type === 'marriage');
+    const lineages = links.filter(l => l.type === 'lineage');
+
+    function build(id) {
+        const u = m.get(id);
+        if (!u) return null;
+        
+        const mar = marriages.find(x => x.parent === id || x.child === id);
+        const spouseId = mar ? (mar.parent === id ? mar.child : mar.parent) : null;
+        const sp = spouseId ? m.get(spouseId) : null;
+        
+        // Children lookup
+        const k = mar ? mar.parent + '+' + mar.child : id;
+        const alt = mar ? mar.child + '+' + mar.parent : id;
+        
+        const ch = lineages.filter(r => r.parent === k || r.parent === alt || r.parent === id)
+                           .map(r => build(r.child)).filter(x => x);
+
+        return { 
+            ...u, 
+            spouse: sp, 
+            children: ch.length ? ch : null, 
+            _direct: ch.length, 
+            _total: ch.reduce((a, c) => a + 1 + (c._total || 0), 0) 
+        };
+    }
+
+    const data = build('DH'); // root ID
+    root = d3.hierarchy(data);
+    root.x0 = size / 2; root.y0 = 0;
+    root.descendants().forEach(d => { if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
+
+    initCanvas();
+    renderTree(root);
+}
+
+function initCanvas() {
+    d3.select("#canvas").selectAll("*").remove();
+    svg = d3.select("#canvas").append("svg").attr("width", size).attr("height", size);
+    g = svg.append("g").attr("transform", `translate(${size / 2}, 100)`);
+}
+
+function renderTree(source) {
+    const tree = d3.tree().nodeSize([boxW * 2.8, 140]);
+    tree(root);
+    const nodes = root.descendants(), links = root.links();
+
+    const link = g.selectAll(".link").data(links, d => d.target.data.id);
+    link.exit().remove();
+    link.enter().append("path").attr("class", "link").merge(link).transition().duration(500).attr("d", d3.linkVertical().x(d => d.x).y(d => d.y));
+
+    const node = g.selectAll(".node").data(nodes, d => d.data.id);
+    node.exit().remove();
+    const nE = node.enter().append("g").attr("class", "node").attr("transform", d => `translate(${source.x0 || 0},${source.y0 || 0})`);
+
+    node.merge(nE).transition().duration(500).attr("transform", d => `translate(${d.x},${d.y})`);
+
+    nE.each(function (d) {
+        const el = d3.select(this);
+        if (d.data.spouse) {
+            el.append("rect").attr("class", "marriage-rect").attr("x", -boxW - 10).attr("y", -boxH / 2 - 5).attr("width", boxW * 2 + 20).attr("height", boxH + 15);
+            drawIndiv(el, d.data, -boxW / 2 - 5);
+            drawIndiv(el, d.data.spouse, boxW / 2 + 5);
+        } else {
+            drawIndiv(el, d.data, 0);
+        }
+
+        if (d.children || d._children) {
+            const ui = el.append("g").attr("transform", `translate(0, ${boxH / 2 + 12})`)
+                .on("click", (e, nodeD) => {
+                    e.stopPropagation();
+                    if (nodeD.children) { nodeD._children = nodeD.children; nodeD.children = null; }
+                    else { nodeD.children = nodeD._children; nodeD._children = null; }
+                    renderTree(nodeD);
+                });
+            ui.append("rect").attr("x", -20).attr("y", -7).attr("width", 40).attr("height", 14).attr("fill", "#2c3e50").attr("rx", 7);
+            ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "10px").text(`${d.data._direct}|${d.data._total}`);
+            ui.append("circle").attr("cy", 18).attr("r", 7).attr("fill", "white").attr("stroke", "#2c3e50");
+            ui.append("text").attr("y", 22).attr("text-anchor", "middle").style("fill", "#2c3e50").style("font-size", "12px").text(d.children ? "-" : "+");
+        }
+    });
+    nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+}
+
+function drawIndiv(c, d, o) {
+    const group = c.append("g").on("click", (e) => { e.stopPropagation(); showCard(d); });
+    group.append("rect").attr("x", o - boxW / 2).attr("y", -boxH / 2).attr("width", boxW).attr("height", boxH).attr("fill", d.gender === 'M' ? 'var(--male)' : 'var(--female)');
+    group.append("text").attr("x", o).attr("y", 5).text(d.name);
+}
+
+function jumpToMember(id) {
+    switchTab('tree');
+    const target = root.descendants().find(d => d.data.id === id);
+    if (target) {
+        let curr = target;
+        while (curr.parent) {
+            if (curr.parent._children) { curr.parent.children = curr.parent._children; curr.parent._children = null; }
+            curr = curr.parent;
+        }
+        renderTree(target);
+        setTimeout(() => {
+            const pane = document.getElementById('pane');
+            pane.scrollTo({ left: target.x + (size / 2) - (pane.clientWidth / 2), top: target.y + 100 - (pane.clientHeight / 3), behavior: 'smooth' });
+            d3.selectAll(".node").classed("highlight-node", false);
+            d3.selectAll(".node").filter(d => d.data.id === id).classed("highlight-node", true);
+        }, 300);
+    }
+}
+
+function showTab(tab) {
+    const isTree = (tab === 'tree');
+    document.getElementById('pane').style.display = isTree ? 'block' : 'none';
+    document.getElementById('directory-view').style.display = isTree ? 'none' : 'block';
+    document.getElementById('tab-tree').classList.toggle('active', isTree);
+    document.getElementById('tab-members').classList.toggle('active', !isTree);
+    if (!isTree) renderDirectory();
+}
+
+function renderDirectory(filter = "") {
+    const list = document.getElementById('member-list');
+    list.innerHTML = "";
+    allMembers.filter(m => m.name.toLowerCase().includes(filter.toLowerCase()))
+    .sort((a,b)=>a.name.localeCompare(b.name)).forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'member-item';
+        div.innerHTML = `<div><b>${m.name}</b><br><small>ID: ${m.id}</small></div><span>➔</span>`;
+        div.onclick = () => jumpToMember(m.id);
+        list.appendChild(div);
+    });
+}
+
+function showCard(d) {
+    document.getElementById('m-name').innerText = d.name;
+    document.getElementById('m-details').innerHTML = `<b>ID:</b> ${d.id}<br><b>Gender:</b> ${d.gender}<br><b>Age:</b> ${d.age || 'N/A'}<br><b>Location:</b> ${d.location || 'N/A'}<br><b>Phone:</b> ${d.phone || 'N/A'}`;
+    document.getElementById('modal').style.display = 'flex';
+}
+function closeCard() { document.getElementById('modal').style.display = 'none'; }
+
+window.onload = loadFamilyData;
+</script>
+</body>
+</html>
