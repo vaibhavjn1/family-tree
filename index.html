@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -7,7 +7,7 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         :root { --primary: #2c3e50; --accent: #1abc9c; --bg: #f4f7f6; --male: #3498db; --female: #e91e63; }
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         .phone-frame { width: 100%; height: 100%; background: var(--bg); position: relative; display: flex; flex-direction: column; }
         .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; }
         .view-area { flex-grow: 1; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; }
@@ -41,7 +41,7 @@
 <div class="phone-frame">
     <header class="app-header">
         <div style="font-weight:bold;">Symmetry Family</div>
-        <button onclick="location.reload()" style="background:none; border:1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset</button>
+        <button onclick="location.reload()" style="background:none; border: 1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset</button>
     </header>
 
     <div class="view-area" id="pane">
@@ -62,7 +62,7 @@
 </div>
 
 <script>
-// Define switchTab globally so it's ready as soon as HTML is rendered
+// Define switchTab first so it's globally available immediately
 function switchTab(tab) {
     const isTree = (tab === 'tree');
     document.getElementById('pane').style.display = isTree ? 'block' : 'none';
@@ -90,7 +90,18 @@ async function loadFamilyData() {
 
 function processData(members, links) {
     const m = new Map();
-    members.forEach(member => m.set(member.id, member));
+    // Normalize headers to lowercase for internal logic
+    members.forEach(member => {
+        const normalized = {
+            id: member.id || member.ID,
+            name: member.name || member.Name,
+            gender: member.gender || member.Gender,
+            age: member.age || member.Age,
+            location: member.location || member.Location,
+            phone: member.phone || member.Phone
+        };
+        m.set(normalized.id, normalized);
+    });
 
     const marriages = links.filter(l => l.type === 'marriage');
     const lineages = links.filter(l => l.type === 'lineage');
@@ -108,9 +119,13 @@ function processData(members, links) {
         return { ...u, spouse: sp, children: ch.length ? ch : null, _direct: ch.length, _total: ch.reduce((a, c) => a + 1 + (c._total || 0), 0) };
     }
 
-    // Since you have two roots (DH and NP), you may want to focus on one or build a ghost root.
-    // Defaulting to DH as per your previous setup. [cite: 51, 62]
-    root = d3.hierarchy(build('DH'));
+    // Creating a Ghost Root to show both DH and NP branches side-by-side
+    const ghostRoot = {
+        id: "ROOT", name: "Family Tree", gender: "M",
+        children: [build('DH'), build('NP')].filter(x => x)
+    };
+
+    root = d3.hierarchy(ghostRoot);
     root.x0 = size / 2; root.y0 = 0;
     root.descendants().forEach(d => { 
         if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } 
@@ -129,7 +144,9 @@ function initCanvas() {
 function renderTree(source) {
     const tree = d3.tree().nodeSize([boxW * 2.8, 140]);
     tree(root);
-    const nodes = root.descendants(), links = root.links();
+    const nodes = root.descendants().filter(d => d.depth > 0); // Hide Ghost Root
+    const links = root.links().filter(d => d.source.depth > 0);
+
     const link = g.selectAll(".link").data(links, d => d.target.data.id);
     link.exit().remove();
     link.enter().append("path").attr("class", "link").merge(link).transition().duration(500).attr("d", d3.linkVertical().x(d => d.x).y(d => d.y));
@@ -188,19 +205,19 @@ function jumpToMember(id) {
 function renderDirectory(filter = "") {
     const list = document.getElementById('member-list');
     list.innerHTML = "";
-    allMembers.filter(m => m.name.toLowerCase().includes(filter.toLowerCase()))
-    .sort((a,b)=>a.name.localeCompare(b.name)).forEach(m => {
+    allMembers.filter(m => (m.name || m.Name || "").toLowerCase().includes(filter.toLowerCase()))
+    .sort((a,b)=> (a.name || a.Name || "").localeCompare(b.name || b.Name || "")).forEach(m => {
         const div = document.createElement('div');
         div.className = 'member-item';
-        div.innerHTML = `<div><b>${m.name}</b><br><small>ID: ${m.id}</small></div><span>➔</span>`;
-        div.onclick = () => jumpToMember(m.id);
+        div.innerHTML = `<div><b>${m.name || m.Name}</b><br><small>ID: ${m.id || m.ID}</small></div><span>➔</span>`;
+        div.onclick = () => jumpToMember(m.id || m.ID);
         list.appendChild(div);
     });
 }
 
 function showCard(d) {
     document.getElementById('m-name').innerText = d.name;
-    document.getElementById('m-details').innerHTML = `<b>ID:</b> ${d.id}<br><b>Gender:</b> ${d.gender}<br><b>Age:</b> ${d.age || 'N/A'}<br><b>Location:</b> ${d.location || 'N/A'}<br><b>Phone:</b> ${d.phone || 'N/A'}`;
+    document.getElementById('m-details').innerHTML = `<b>ID:</b> ${d.id}<br><b>Gender:</b> ${d.gender}<br><b>Age:</b> ${d.age || 'N/A'}<br><b>Loc:</b> ${d.location || 'N/A'}<br><b>Ph:</b> ${d.phone || 'N/A'}`;
     document.getElementById('modal').style.display = 'flex';
 }
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
