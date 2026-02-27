@@ -19,16 +19,16 @@
         #canvas { width: 5000px; height: 5000px; background: white; }
         #directory-view { flex-grow: 1; overflow-y: auto; background: white; display: none; padding-bottom: 80px; }
         
-        /* Search in Members Tab */
+        /* Directory List Style */
         .directory-header { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 1px solid #eee; z-index: 10; }
         .search-box { width: 100%; padding: 12px; border-radius: 25px; border: 1px solid #ddd; outline: none; font-size: 16px; box-sizing: border-box; }
-        .member-item { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .member-item { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: flex-start; align-items: center; cursor: pointer; }
+        .member-info b { color: var(--primary); font-size: 16px; }
 
-        /* Nodes & Highlight */
+        /* Tree Elements */
         .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
         .node text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
         .marriage-rect { fill: rgba(248,252,252,0.9); stroke: #94a3b8; stroke-dasharray: 4; stroke-width: 1px; }
-        .highlight-node rect { stroke: #f1c40f !important; stroke-width: 5px !important; filter: drop-shadow(0 0 10px #f1c40f); }
 
         /* Member Card Modal */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
@@ -36,7 +36,7 @@
         @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .card-close { position: absolute; top: 10px; right: 15px; font-size: 24px; color: #999; cursor: pointer; }
 
-        /* Bottom Nav */
+        /* Navigation */
         .bottom-nav { height: 75px; background: #fff; border-top: 1px solid #ddd; display: flex; justify-content: space-around; align-items: center; z-index: 100; }
         .nav-item { text-align: center; font-size: 12px; color: #7f8c8d; flex: 1; cursor: pointer; }
         .nav-item.active { color: var(--accent); font-weight: bold; }
@@ -81,12 +81,9 @@
 </div>
 
 <script>
-/** * 1. Global Setup & State 
- */
 const boxW = 110, boxH = 30, size = 5000;
 let svg, g, root, allMembers = [];
 
-// Tab Switcher (Defined early to prevent ReferenceError)
 function switchTab(tab) {
     const isTree = (tab === 'tree');
     document.getElementById('pane').style.display = isTree ? 'block' : 'none';
@@ -96,8 +93,6 @@ function switchTab(tab) {
     if (!isTree) renderDirectory();
 }
 
-/** * 2. Data Loading Engine 
- */
 async function init() {
     try {
         const [membersData, linksData] = await Promise.all([
@@ -106,7 +101,6 @@ async function init() {
         ]);
         allMembers = membersData;
         
-        // Data Processing [cite: 1, 2]
         const m = new Map();
         membersData.forEach(d => m.set(d.id, d));
 
@@ -126,7 +120,6 @@ async function init() {
             return { ...u, spouse, children: ch.length ? ch : null, _direct: ch.length, _total: ch.reduce((a, c) => a + 1 + (c._total || 0), 0) };
         }
 
-        // Initialize Tree starting with DH [cite: 1]
         root = d3.hierarchy(build('DH'));
         root.x0 = size / 2; root.y0 = 0;
         root.descendants().forEach(d => { 
@@ -143,8 +136,6 @@ async function init() {
     }
 }
 
-/** * 3. Rendering & Interaction 
- */
 function renderTree(source) {
     const tree = d3.tree().nodeSize([boxW * 2.8, 140]);
     tree(root);
@@ -169,7 +160,6 @@ function renderTree(source) {
             drawBox(el, d.data, 0);
         }
 
-        // Navigation Badge Below
         if (d.children || d._children) {
             const ui = el.append("g").attr("transform", `translate(0, ${boxH / 2 + 12})`)
                 .on("click", (e, nodeD) => {
@@ -179,7 +169,7 @@ function renderTree(source) {
                     renderTree(nodeD);
                 });
             ui.append("rect").attr("x", -20).attr("y", -7).attr("width", 40).attr("height", 14).attr("fill", "#2c3e50").attr("rx", 7);
-            ui.append("text").attr("class", "badge-text").attr("y", 4).text(`${d.data._direct}|${d.data._total}`);
+            ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "10px").text(`${d.data._direct}|${d.data._total}`);
             ui.append("circle").attr("cy", 18).attr("r", 7).attr("fill", "white").attr("stroke", "#2c3e50");
             ui.append("text").attr("y", 22).attr("text-anchor", "middle").style("fill", "#2c3e50").style("font-size", "12px").text(d.children ? "-" : "+");
         }
@@ -193,24 +183,6 @@ function drawBox(c, d, o) {
     box.append("text").attr("x", o).attr("y", 5).text(d.name);
 }
 
-/** * 4. Navigation & Directory 
- */
-function jumpToMember(id) {
-    switchTab('tree');
-    const target = root.descendants().find(d => d.data.id === id);
-    if (target) {
-        target.ancestors().reverse().forEach(d => {
-            if (d._children) { d.children = d._children; d._children = null; }
-        });
-        renderTree(target);
-        setTimeout(() => {
-            centerNode(target);
-            d3.selectAll(".node").classed("highlight-node", false);
-            d3.selectAll(".node").filter(d => d.data.id === id).classed("highlight-node", true);
-        }, 350);
-    }
-}
-
 function renderDirectory(filter = "") {
     const list = document.getElementById('member-list');
     list.innerHTML = "";
@@ -218,8 +190,8 @@ function renderDirectory(filter = "") {
     .sort((a,b)=>a.name.localeCompare(b.name)).forEach(m => {
         const div = document.createElement('div');
         div.className = 'member-item';
-        div.innerHTML = `<div><b>${m.name}</b><br><small>ID: ${m.id}</small></div><span>➔</span>`;
-        div.onclick = () => jumpToMember(m.id);
+        div.innerHTML = `<div class="member-info"><b>${m.name}</b><br><small>ID: ${m.id}</small></div>`;
+        div.onclick = () => showCard(m); // Directly open card on click
         list.appendChild(div);
     });
 }
