@@ -36,7 +36,6 @@
         .nav-item.active { color: var(--accent); font-weight: bold; }
         .nav-item span { font-size: 24px; display: block; margin-bottom: 2px; }
         
-        /* Floating Action Button (FAB) */
         .fab { position: fixed; right: 20px; bottom: 95px; width: 50px; height: 50px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 20; cursor: pointer; }
     </style>
 </head>
@@ -89,7 +88,7 @@ let svg, g, root, allMembers = [];
 
 const formLinks = {
     details: "https://docs.google.com/forms/d/e/1FAIpQLSeskFqcch7l1KlrrR0kRyJBMZza-7WyKgHQhDoiqxcEBWxSvQ/viewform?embedded=true",
-    newMember: "https://docs.google.com/forms/d/e/1FAIpQLSe7qR8kXq1W-zR_2P6D4W_7X9Vv9Y5V9Y5V9Y5V9Y5V9Y5V9Q/viewform?embedded=true"
+    newMember: "https://docs.google.com/forms/d/e/1FAIpQLSdmgTda1cVu_dkElZt_XWGcaMPV681wImIDjx5LH4z1dH6p-A/viewform?embedded=true"
 };
 
 function switchTab(tab) {
@@ -99,7 +98,6 @@ function switchTab(tab) {
     document.getElementById('tab-tree').classList.toggle('active', isTree);
     document.getElementById('tab-members').classList.toggle('active', !isTree);
     
-    // Toggle FAB icon and action based on tab
     const fab = document.getElementById('fab-button');
     if (isTree) {
         fab.innerHTML = "🏠";
