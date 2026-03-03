@@ -26,6 +26,10 @@
         @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .card-close { position: absolute; top: 10px; right: 15px; font-size: 24px; color: #999; cursor: pointer; }
 
+        /* Copy Button Style */
+        .copy-btn { background: #eee; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; margin-left: 10px; color: #333; }
+        .copy-btn:active { background: #ddd; }
+
         /* Navigation */
         .bottom-nav { height: 75px; background: #fff; border-top: 1px solid #ddd; display: flex; justify-content: space-around; align-items: center; z-index: 100; }
         .nav-item { text-align: center; font-size: 12px; color: #7f8c8d; flex: 1; cursor: pointer; }
@@ -41,7 +45,7 @@
         <span class="card-close" onclick="closeCard()">×</span>
         <h3 id="m-name" style="margin: 0 0 10px 0; color: var(--primary);"></h3>
         <hr>
-        <p id="m-details" style="font-size: 14px; line-height: 1.6; color: #444;"></p>
+        <div id="m-details" style="font-size: 14px; line-height: 1.6; color: #444;"></div>
         
         <div style="margin-top: 20px; text-align: center; border-top: 1px solid #eee; padding-top: 15px;">
             <button onclick="openForm()" style="background: var(--accent); color: white; border: none; padding: 12px 15px; border-radius: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 100%;">
@@ -169,9 +173,25 @@ function renderDirectory(f = "") {
 
 function showCard(d) {
     document.getElementById('m-name').innerText = d.name;
-    document.getElementById('m-details').innerHTML = `<b>ID:</b> ${d.id}<br><b>Gender:</b> ${d.gender}<br><b>Age:</b> ${d.age || 'N/A'}<br><b>Location:</b> ${d.location || 'N/A'}<br><b>Phone:</b> ${d.phone || 'N/A'}`;
+    document.getElementById('m-details').innerHTML = `
+        <b>ID:</b> <span>${d.id}</span> <button class="copy-btn" onclick="copyId('${d.id}')">Copy</button><br>
+        <b>Gender:</b> ${d.gender}<br>
+        <b>Age:</b> ${d.age || 'N/A'}<br>
+        <b>Location:</b> ${d.location || 'N/A'}<br>
+        <b>Phone:</b> ${d.phone || 'N/A'}
+    `;
     document.getElementById('modal').style.display = 'flex';
 }
+
+function copyId(id) {
+    navigator.clipboard.writeText(id).then(() => {
+        const btn = event.target;
+        const originalText = btn.innerText;
+        btn.innerText = "Copied!";
+        setTimeout(() => btn.innerText = originalText, 1500);
+    });
+}
+
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
 function openForm() { document.getElementById('form-modal').style.display = 'flex'; }
 function closeForm() {
