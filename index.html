@@ -26,11 +26,9 @@
         @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .card-close { position: absolute; top: 10px; right: 15px; font-size: 24px; color: #999; cursor: pointer; }
 
-        /* Copy Button Style */
         .copy-btn { background: #eee; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; margin-left: 10px; color: #333; }
         .copy-btn:active { background: #ddd; }
 
-        /* Navigation */
         .bottom-nav { height: 75px; background: #fff; border-top: 1px solid #ddd; display: flex; justify-content: space-around; align-items: center; z-index: 100; }
         .nav-item { text-align: center; font-size: 12px; color: #7f8c8d; flex: 1; cursor: pointer; }
         .nav-item.active { color: var(--accent); font-weight: bold; }
@@ -66,11 +64,14 @@
 <div class="phone-frame">
     <header class="app-header">
         <div style="font-weight:bold;">Symmetry Family</div>
+        <div style="flex-grow: 1; margin: 0 15px;">
+            <input type="text" id="treeSearch" class="search-box" style="padding: 8px 15px; font-size: 14px;" placeholder="Search tree..." onkeyup="syncSearch(this.value)">
+        </div>
         <button onclick="location.reload()" style="background:none; border: 1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset</button>
     </header>
     <div class="view-area" id="pane"><div id="canvas"></div></div>
     <div id="directory-view">
-        <div class="directory-header"><input type="text" class="search-box" placeholder="Search relatives..." onkeyup="renderDirectory(this.value)"></div>
+        <div class="directory-header"><input type="text" id="dirSearch" class="search-box" placeholder="Search members..." onkeyup="syncSearch(this.value)"></div>
         <div id="member-list"></div>
     </div>
 
@@ -105,8 +106,46 @@ function switchTab(tab) {
     } else {
         fab.innerHTML = "➕";
         fab.onclick = () => openForm('newMember');
-        renderDirectory();
     }
+}
+
+/**
+ * Sync Search Functionality 
+ */
+function syncSearch(val) {
+    document.getElementById('treeSearch').value = val;
+    document.getElementById('dirSearch').value = val;
+    
+    renderDirectory(val);
+    filterTree(val);
+}
+
+function filterTree(val) {
+    if (!val) {
+        // Reset tree to default view if search is empty
+        root.descendants().forEach(d => {
+            if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; }
+        });
+        renderTree(root);
+        return;
+    }
+
+    const searchTerm = val.toLowerCase();
+    const matches = root.descendants().filter(d => d.data.name.toLowerCase().includes(searchTerm));
+
+    // Collapse all first
+    root.descendants().forEach(d => {
+        if (d.children) { d._children = d.children; d.children = null; }
+    });
+
+    // Expand path to every match 
+    matches.forEach(match => {
+        match.ancestors().forEach(anc => {
+            if (anc._children) { anc.children = anc._children; anc._children = null; }
+        });
+    });
+
+    renderTree(root);
 }
 
 async function init() {
@@ -138,6 +177,7 @@ async function init() {
         svg = d3.select("#canvas").append("svg").attr("width", size).attr("height", size);
         g = svg.append("g").attr("transform", `translate(${size / 2}, 100)`);
         renderTree(root); centerNode(root);
+        renderDirectory("");
     } catch (err) { console.error("Data Load Error:", err); }
 }
 
