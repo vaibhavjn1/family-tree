@@ -119,6 +119,9 @@ NP,NK,lineage
 NK,N1,lineage
 NK,N2,lineage
 NK,N3,lineage
+N5,N9,lineage
+N5,N10,lineage
+N5,N11,lineage
 SHB,VP,marriage
 VIB,RJ,marriage
 VIB,DIV,lineage
@@ -130,7 +133,6 @@ KU,GUL,marriage
 DH,T1,lineage
 T1,T2,lineage
 T2,N22,lineage
-KU,GUL,marriage
 KU,C1,lineage
 KU,C3,lineage
 KU,C4,lineage
