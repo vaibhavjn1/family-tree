@@ -141,19 +141,31 @@ async function init() {
             });
         }
 
+        /**
+         * FIXED Recursive Build
+         * Ensures a single object is returned even if multiple marriages exist
+         */
         function build(id, visited = new Set()) {
-            const u = mDataMap.get(id); if (!u) return null;
+            const u = mDataMap.get(id); 
+            if (!u || visited.has(id)) return null;
+            visited.add(id);
             
-            // Get all marriage records involving this individual
-            const allMarriages = marriageData.filter(x => x.parent === id || x.child === id);
-            
-            // Process the first marriage or solo state
-            const results = allMarriages.map((mar, idx) => {
+            const allMar = marriageData.filter(x => x.parent === id || x.child === id);
+
+            if (allMar.length === 0) {
+                const ch = lineageData.filter(r => r.parent === id)
+                    .map(r => build(r.child, new Set(visited))).filter(x => x);
+                return { ...u, realId: u.id, children: ch.length ? ch : null, _direct: ch.length };
+            }
+
+            // If multiple marriages, we return the first one as primary, 
+            // and attach other marriages as virtual siblings to the parent node.
+            // But to keep d3 hierarchy stable, we map them into a flattened array 
+            // during the root children mapping.
+            return allMar.map((mar, idx) => {
                 const spouseId = mar.parent === id ? mar.child : mar.parent;
                 const spouse = mDataMap.get(spouseId);
                 const k = mar.parent + '+' + mar.child, alt = mar.child + '+' + mar.parent;
-                
-                // Get children specifically for this pair
                 const ch = lineageData.filter(r => r.parent === k || r.parent === alt || r.parent === id)
                     .map(r => build(r.child, new Set(visited))).filter(x => x);
 
@@ -167,17 +179,20 @@ async function init() {
                     _direct: ch.length
                 };
             });
-
-            // If person has no marriages, return a solo node
-            if (results.length === 0) {
-                const ch = lineageData.filter(r => r.parent === id).map(r => build(r.child, new Set(visited))).filter(x => x);
-                return [{ ...u, realId: u.id, children: ch.length ? ch : null, _direct: ch.length }];
-            }
-
-            return results;
         }
 
-        const universeGhost = { id: "UNIVERSE", name: "Universe", children: [build('DH'), build('NP')].flat().filter(x => x) };
+        const dhNodes = build('DH');
+        const npNodes = build('NP');
+
+        const universeGhost = { 
+            id: "UNIVERSE", 
+            name: "Universe", 
+            children: [
+                ...(Array.isArray(dhNodes) ? dhNodes : [dhNodes]), 
+                ...(Array.isArray(npNodes) ? npNodes : [npNodes])
+            ].filter(x => x) 
+        };
+        
         root = d3.hierarchy(universeGhost);
         root.x0 = canvasWidth/2; root.y0 = 0;
         
@@ -186,7 +201,15 @@ async function init() {
         });
 
         const unmappedRoots = members.filter(m => !mainLineageIds.has(m.id) && !lineageData.some(l => l.child === m.id));
-        const unmappedGhost = { id: "GHOST", name: "Unmapped", children: unmappedRoots.flatMap(r => build(r.id)) };
+        const unmappedGhost = { 
+            id: "GHOST", 
+            name: "Unmapped", 
+            children: unmappedRoots.flatMap(r => {
+                const b = build(r.id);
+                return Array.isArray(b) ? b : [b];
+            }).filter(x => x) 
+        };
+        
         unmappedRoot = d3.hierarchy(unmappedGhost);
         unmappedRoot.descendants().forEach(d => { if(d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
 
@@ -204,7 +227,7 @@ async function init() {
 }
 
 function renderTree(sourceRoot, container) {
-    const treeLayout = d3.tree().nodeSize([boxW * 3.2, 180]);
+    const treeLayout = d3.tree().nodeSize([boxW * 3.5, 180]);
     treeLayout(sourceRoot);
     const nodes = sourceRoot.descendants().filter(d => d.depth > 0);
     const links = sourceRoot.links().filter(d => d.source.depth > 0);
@@ -291,7 +314,10 @@ function showCard(d) {
 }
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
 function openForm(type) { document.getElementById('form-iframe').src = formLinks[type]; document.getElementById('form-modal').style.display = 'flex'; }
-function closeForm() { document.getElementById('form-modal').style.display = 'none'; }
+function closeForm() { 
+    document.getElementById('form-modal').style.display = 'none'; 
+    setTimeout(() => { alert("Thanks for filling details are requested, please wait for next release for changes to take effect"); }, 300);
+}
 
 function centerNodes() {
     const p = document.getElementById('pane');
