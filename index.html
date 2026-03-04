@@ -14,8 +14,6 @@
         #canvas, #canvas-unmapped { min-width: 10000px; min-height: 5000px; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 50px 50px; }
         
         .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
-        .spouse-parent-link { fill: none; stroke: #e67e22; stroke-width: 3px; stroke-dasharray: 6,4; opacity: 0.8; }
-        
         .node-container { cursor: pointer; }
         .member-rect { stroke: #fff; stroke-width: 1px; }
         .node-text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
@@ -127,42 +125,25 @@ async function init() {
             visited.add(id);
 
             const marriages = marriageData.filter(m => m.parent === id || m.child === id);
-            
             const marriageDetails = marriages.map(mar => {
                 const spouseId = mar.parent === id ? mar.child : mar.parent;
                 const spouse = mDataMap.get(spouseId);
                 const k = mar.parent + '+' + mar.child, alt = mar.child + '+' + mar.parent;
-                const children = lineageData
-                    .filter(r => r.parent === k || r.parent === alt)
-                    .map(r => build(r.child, new Set(visited)))
-                    .filter(x => x);
-
-                return { spouse, children: children.length ? children : null, pairId: k };
+                const children = lineageData.filter(r => r.parent === k || r.parent === alt)
+                    .map(r => build(r.child, new Set(visited))).filter(x => x);
+                return { spouse, children: children.length ? children : null };
             });
 
             const soloChildren = lineageData.filter(r => r.parent === id)
-                .map(r => build(r.child, new Set(visited)))
-                .filter(x => x);
-
-            // Important: We still keep a 'children' property for D3 hierarchy to work,
-            // but we fill it with ALL children from ALL marriages combined.
+                .map(r => build(r.child, new Set(visited))).filter(x => x);
             const allChildren = [...soloChildren, ...marriageDetails.flatMap(m => m.children || [])];
 
-            return {
-                ...u,
-                marriages: marriageDetails,
-                soloChildren: soloChildren,
-                children: allChildren.length ? allChildren : null
-            };
+            return { ...u, marriages: marriageDetails, soloChildren, children: allChildren.length ? allChildren : null };
         }
 
         const universeGhost = { id: "UNIVERSE", name: "Universe", children: [build('DH'), build('NP')].filter(x => x) };
         root = d3.hierarchy(universeGhost);
-        
-        // Initial Collapse logic
-        root.descendants().forEach(d => { 
-            if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } 
-        });
+        root.descendants().forEach(d => { if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } });
 
         const unmappedRoots = members.filter(m => !lineageData.some(l => l.child === m.id) && m.id !== 'DH' && m.id !== 'NP');
         const unmappedGhost = { id: "GHOST", name: "Unmapped", children: unmappedRoots.map(r => build(r.id)).filter(x => x) };
@@ -182,11 +163,16 @@ async function init() {
 }
 
 function renderTree(sourceRoot, container) {
-    const treeLayout = d3.tree().nodeSize([350, 220]);
+    const treeLayout = d3.tree().nodeSize([380, 220]);
     treeLayout(sourceRoot);
 
     const nodes = sourceRoot.descendants().filter(d => d.depth > 0);
     const links = sourceRoot.links().filter(d => d.source.depth > 0);
+
+    // RESTORED: Curved Connectors using d3.linkVertical()
+    const curvedLink = d3.linkVertical()
+        .x(d => d.x)
+        .y(d => d.y);
 
     const link = container.selectAll(".link").data(links, d => d.target.data.id + (d.target.parent ? d.target.parent.data.id : ''));
     link.exit().remove();
@@ -197,20 +183,21 @@ function renderTree(sourceRoot, container) {
             const c = d.target.data;
             let startX = d.source.x;
             
-            // Map link start to the specific spouse box if applicable
+            // Offset start point if child belongs to a specific spouse box
             if (p.marriages) {
                 const mIdx = p.marriages.findIndex(m => m.children && m.children.some(child => child.id === c.id));
                 if (mIdx !== -1) startX += (mIdx + 1) * (boxW + 10);
             }
             
-            return `M${startX},${d.source.y + boxH/2} V${d.target.y - boxH/2} H${d.target.x}`;
+            return curvedLink({
+                source: [startX, d.source.y + boxH/2],
+                target: [d.target.x, d.target.y - boxH/2]
+            });
         });
 
     const node = container.selectAll(".node-container").data(nodes, d => d.data.id);
     node.exit().remove();
-    
-    const nE = node.enter().append("g").attr("class", "node-container")
-        .attr("transform", d => `translate(${d.x},${d.y})`);
+    const nE = node.enter().append("g").attr("class", "node-container").attr("transform", d => `translate(${d.x},${d.y})`);
 
     nE.each(function(d) {
         const el = d3.select(this);
@@ -231,7 +218,6 @@ function renderTree(sourceRoot, container) {
                 const xPos = (i + 1) * (boxW + 10);
                 const sG = el.append("g").attr("transform", `translate(${xPos}, 0)`);
                 drawBox(sG, m.spouse, 0);
-
                 if (lineageData.some(l => l.child === m.spouse.id)) {
                     const hash = sG.append("g").attr("transform", `translate(${boxW/2 + 8}, 0)`).style("cursor", "pointer")
                         .on("click", (e) => { e.stopPropagation(); graftSpouseFamily(m.spouse.id); });
@@ -241,26 +227,15 @@ function renderTree(sourceRoot, container) {
             });
         }
 
-        // RE-ADDED: Expansion Toggle
-        // Show toggle if there are children (either currently shown or hidden)
         if (d.children || d._children) {
-            const ui = el.append("g").attr("transform", `translate(${totalW / 2 - boxW/2}, ${boxH/2 + 15})`)
+            const ui = el.append("g").attr("transform", `translate(${totalW/2 - boxW/2}, ${boxH/2 + 15})`)
                 .on("click", (e) => {
                     e.stopPropagation();
-                    if (d.children) {
-                        d._children = d.children;
-                        d.children = null;
-                    } else {
-                        d.children = d._children;
-                        d._children = null;
-                    }
+                    d.children ? (d._children = d.children, d.children = null) : (d.children = d._children, d._children = null);
                     renderTree(sourceRoot, container);
                 });
             ui.append("circle").attr("r", 10).attr("fill", "var(--primary)");
             ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "14px").text(d.children ? "-" : "+");
-            
-            // Show count of direct children
-            ui.append("text").attr("y", 22).attr("text-anchor", "middle").style("fill", "var(--primary)").style("font-size", "10px").text(d.data._direct || (d._children ? d._children.length : 0));
         }
     });
 
@@ -305,10 +280,7 @@ function showCard(d) {
 }
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
 function openForm(type) { document.getElementById('form-iframe').src = formLinks[type]; document.getElementById('form-modal').style.display = 'flex'; }
-function closeForm() { 
-    document.getElementById('form-modal').style.display = 'none'; 
-    setTimeout(() => { alert("Thanks for filling details are requested, please wait for next release for changes to take effect"); }, 300);
-}
+function closeForm() { document.getElementById('form-modal').style.display = 'none'; setTimeout(() => alert("Thanks for filling details are requested, please wait for next release for changes to take effect"), 300); }
 function centerNodes() { const p = document.getElementById('pane'); p.scrollTo({ left: canvasWidth/2 - p.clientWidth/2, top: 0, behavior: 'smooth' }); }
 function updateMinimap() {
     const pane = document.getElementById('pane'), viewport = document.getElementById('minimap-viewport');
