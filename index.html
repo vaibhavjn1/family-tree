@@ -10,28 +10,20 @@
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
         .phone-frame { width: 100%; height: 100%; background: var(--bg); position: relative; display: flex; flex-direction: column; }
         .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        
         .view-area { flex-grow: 1; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; background: #e5e7eb; }
         #canvas, #canvas-unmapped { min-width: 10000px; min-height: 5000px; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 50px 50px; }
-
         #minimap { position: fixed; bottom: 95px; left: 20px; width: 140px; height: 140px; background: rgba(255, 255, 255, 0.95); border: 2px solid var(--primary); border-radius: 8px; z-index: 1000; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); cursor: crosshair; }
         #minimap-viewport { position: absolute; border: 2px solid var(--accent); background: rgba(26, 188, 156, 0.2); pointer-events: none; }
         .minimap-dot { position: absolute; width: 3px; height: 3px; border-radius: 50%; pointer-events: none; }
-
         #directory-view { flex-grow: 1; overflow-y: auto; background: white; display: none; padding-bottom: 80px; }
         .directory-header { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 1px solid #eee; z-index: 10; }
         .search-box { width: 100%; padding: 10px 15px; border-radius: 25px; border: 1px solid #ddd; outline: none; font-size: 14px; box-sizing: border-box; }
-        
-        /* Tree Links */
         .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
         .spouse-parent-link { fill: none; stroke: #e67e22; stroke-width: 3px; stroke-dasharray: 6,4; opacity: 0.8; }
         .node text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
         .marriage-rect { fill: rgba(248,252,252,0.9); stroke: #94a3b8; stroke-dasharray: 4; stroke-width: 1px; }
-
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
         .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; }
-        
-        /* Nav */
         .bottom-nav { height: 75px; background: #fff; border-top: 1px solid #ddd; display: flex; justify-content: space-around; align-items: center; z-index: 100; }
         .nav-item { text-align: center; font-size: 10px; color: #7f8c8d; flex: 1; cursor: pointer; }
         .nav-item.active { color: var(--accent); font-weight: bold; }
@@ -83,7 +75,7 @@
     </div>
 
     <div id="minimap" onclick="minimapJump(event)"><div id="minimap-viewport"></div></div>
-    <div class="fab" id="fab-button" onclick="centerOnDH()">🏠</div>
+    <div class="fab" id="fab-button" onclick="centerNodes()">🏠</div>
 
     <div class="bottom-nav">
         <div class="nav-item active" id="tab-tree" onclick="switchTab('tree')"><span>🌳</span>Tree</div>
@@ -137,8 +129,8 @@ async function init() {
         marriageData = links.filter(l => l.type === 'marriage');
         members.forEach(d => mDataMap.set(d.id, d));
 
-        // Logic to separate DH and Unmapped
-        const mainLineageIds = new Set(['DH']);
+        // Trace main lineages for DH and NP
+        const mainLineageIds = new Set(['DH', 'NP']);
         let added = true;
         while(added) {
             added = false;
@@ -150,26 +142,36 @@ async function init() {
             });
         }
 
-        function build(id, visited = new Set()) {
+        function build(id, visited = new Set(), depth = 0) {
             if (visited.has(id)) return null; visited.add(id);
             const u = mDataMap.get(id); if (!u) return null;
-            const mar = marriageData.find(x => x.parent === id || x.child === id);
+            
+            const allMar = marriageData.filter(x => x.parent === id || x.child === id);
+            // Handle multiple marriages using bracket logic if needed, but for root building keep simple
+            const mar = allMar[0]; 
             const spouseId = mar ? (mar.parent === id ? mar.child : mar.parent) : null;
             const spouse = spouseId ? mDataMap.get(spouseId) : null;
+            
             const k = mar ? mar.parent + '+' + mar.child : id, alt = mar ? mar.child + '+' + mar.parent : id;
-            const ch = lineageData.filter(r => r.parent === k || r.parent === alt || r.parent === id).map(r => build(r.child, new Set(visited))).filter(x => x);
-            return { ...u, spouse, children: ch.length ? ch : null, _direct: ch.length, _total: ch.reduce((a,c)=>a+1+(c._total||0),0) };
+            const ch = lineageData.filter(r => r.parent === k || r.parent === alt || r.parent === id).map(r => build(r.child, new Set(visited), depth + 1)).filter(x => x);
+            
+            return { ...u, spouse, children: ch.length ? ch : null, _direct: ch.length };
         }
 
-        // Tree 1: DH (Primary)
-        root = d3.hierarchy(build('DH'));
+        // Tree 1: Dual Root (DH and NP)
+        const universeGhost = { id: "UNIVERSE", name: "Family Universe", children: [build('DH'), build('NP')].filter(x => x) };
+        root = d3.hierarchy(universeGhost);
         root.x0 = canvasWidth/2; root.y0 = 0;
-        root.descendants().forEach(d => { if(d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
+        
+        // Initial Collapse: Show only the 2 main roots, collapse their children
+        root.descendants().forEach(d => { 
+            if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } 
+        });
 
-        // Tree 2: Unmapped
+        // Tree 2: Unmapped (Anyone not connected to DH or NP)
         const unmappedRoots = members.filter(m => !mainLineageIds.has(m.id) && !lineageData.some(l => l.child === m.id));
-        const ghost = { id: "GHOST", name: "Unmapped", children: unmappedRoots.map(r => build(r.id)) };
-        unmappedRoot = d3.hierarchy(ghost);
+        const unmappedGhost = { id: "GHOST", name: "Unmapped", children: unmappedRoots.map(r => build(r.id)) };
+        unmappedRoot = d3.hierarchy(unmappedGhost);
         unmappedRoot.descendants().forEach(d => { if(d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
 
         svg = d3.select("#canvas").append("svg").attr("width", canvasWidth).attr("height", canvasHeight);
@@ -180,13 +182,13 @@ async function init() {
 
         renderTree(root, g);
         renderTree(unmappedRoot, gUnmapped);
-        centerOnDH();
+        centerNodes();
         document.getElementById('pane').addEventListener('scroll', updateMinimap);
     } catch (err) { console.error(err); }
 }
 
 function renderTree(sourceRoot, container) {
-    const treeLayout = d3.tree().nodeSize([boxW * 2.8, 160]);
+    const treeLayout = d3.tree().nodeSize([boxW * 3.0, 180]);
     treeLayout(sourceRoot);
     const nodes = sourceRoot.descendants().filter(d => d.depth > 0);
     const links = sourceRoot.links().filter(d => d.source.depth > 0);
@@ -232,14 +234,17 @@ function renderTree(sourceRoot, container) {
     drawMinimapDots();
 }
 
+function drawBox(c, d, o) {
+    const b = c.append("g").on("click", (e) => { e.stopPropagation(); showCard(d); });
+    b.append("rect").attr("x", o - boxW / 2).attr("y", -boxH / 2).attr("width", boxW).attr("height", boxH).attr("fill", d.gender === 'M' ? 'var(--male)' : 'var(--female)');
+    b.append("text").attr("x", o).attr("y", 5).text(d.name);
+}
+
 function graftSpouseFamily(spouseId, nodeInTree) {
     const parentLink = lineageData.find(l => l.child === spouseId);
     if (!parentLink) return;
-    
-    // Find parent in the unmapped tree
     const target = unmappedRoot.descendants().find(d => d.data.id === parentLink.parent);
     if (target) {
-        // Force path expansion and visibility
         target.ancestors().forEach(a => { if(a._children) { a.children = a._children; a._children = null; }});
         target.data.forceDotted = true;
         switchTab('unmapped');
@@ -247,12 +252,6 @@ function graftSpouseFamily(spouseId, nodeInTree) {
         const p = document.getElementById('pane-unmapped');
         p.scrollTo({ left: target.x + (canvasWidth/2) - (p.clientWidth/2), top: target.y + 150 - (p.clientHeight/3), behavior: 'smooth' });
     }
-}
-
-function drawBox(c, d, o) {
-    const b = c.append("g").on("click", (e) => { e.stopPropagation(); showCard(d); });
-    b.append("rect").attr("x", o - boxW / 2).attr("y", -boxH / 2).attr("width", boxW).attr("height", boxH).attr("fill", d.gender === 'M' ? 'var(--male)' : 'var(--female)');
-    b.append("text").attr("x", o).attr("y", 5).text(d.name);
 }
 
 function renderDirectory(f = "") {
@@ -275,7 +274,11 @@ function showCard(d) {
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
 function openForm(type) { document.getElementById('form-iframe').src = formLinks[type]; document.getElementById('form-modal').style.display = 'flex'; }
 function closeForm() { document.getElementById('form-modal').style.display = 'none'; }
-function centerOnDH() { const p = document.getElementById('pane'); p.scrollTo({ left: canvasWidth/2 - p.clientWidth/2, top: 150, behavior: 'smooth' }); }
+
+function centerNodes() {
+    const p = document.getElementById('pane');
+    p.scrollTo({ left: canvasWidth/2 - p.clientWidth/2, top: 0, behavior: 'smooth' });
+}
 
 function updateMinimap() {
     const pane = document.getElementById('pane'), viewport = document.getElementById('minimap-viewport');
