@@ -102,12 +102,8 @@
 
 <div class="phone-frame">
     <header class="app-header">
-        <div style="font-weight:bold; font-size: 14px;">Tree</div>
-        <div style="flex-grow: 1; margin: 0 10px;">
-            <input type="text" id="treeSearch" class="search-box" placeholder="Search..." onkeyup="syncSearch(this.value)">
-            <span id="treeCount" class="match-counter" style="display:none;"></span>
-        </div>
-        <button onclick="location.reload()" style="background:none; border:1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset</button>
+        <div style="font-weight:bold; font-size: 18px;">Family Tree</div>
+        <button onclick="location.reload()" style="background:none; border: 1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset App</button>
     </header>
     
     <div class="view-area" id="pane">
@@ -120,7 +116,7 @@
     
     <div id="directory-view">
         <div class="directory-header">
-            <input type="text" id="dirSearch" class="search-box" placeholder="Search relatives..." onkeyup="syncSearch(this.value)">
+            <input type="text" id="dirSearch" class="search-box" placeholder="Search relatives..." onkeyup="renderDirectory(this.value)">
             <span id="dirCount" class="match-counter" style="display:none;"></span>
         </div>
         <div id="member-list"></div>
@@ -287,41 +283,23 @@ function drawBox(c, d, o) {
     b.append("text").attr("x", o).attr("y", 5).text(d.name);
 }
 
-function syncSearch(val) {
-    document.getElementById('treeSearch').value = val;
-    document.getElementById('dirSearch').value = val;
-    const count = renderDirectory(val);
-    applyTreeFilter(val, count);
-}
-
-function applyTreeFilter(val, count) {
-    const t = val.toLowerCase();
-    ["treeCount", "dirCount"].forEach(id => {
-        const el = document.getElementById(id);
-        el.innerText = `${count} found`;
-        el.style.display = val ? 'block' : 'none';
-    });
-    if (!val) { root.descendants().forEach(d => { if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } }); renderTree(root); return; }
-    const matches = root.descendants().filter(d => (d.data.name||"").toLowerCase().includes(t) || (d.data.location||"").toLowerCase().includes(t));
-    const vIds = new Set();
-    matches.forEach(d => d.ancestors().forEach(a => vIds.add(a.data.id)));
-    root.descendants().forEach(d => {
-        if (vIds.has(d.data.id)) { if (d._children) { d.children = d._children; d._children = null; } }
-        else { if (d.children) { d._children = d.children; d.children = null; } }
-    });
-    renderTree(root);
-    if (matches.length) centerNode(matches[0]);
-}
-
 function renderDirectory(f = "") {
     const l = document.getElementById('member-list'); l.innerHTML = "";
     const filtered = allMembers.filter(m => (m.name||"").toLowerCase().includes(f.toLowerCase()) || (m.location||"").toLowerCase().includes(f.toLowerCase()));
+    
+    const countEl = document.getElementById('dirCount');
+    if (f.trim() !== "") {
+        countEl.innerText = `${filtered.length} found`;
+        countEl.style.display = 'block';
+    } else {
+        countEl.style.display = 'none';
+    }
+
     filtered.sort((a,b)=>a.name.localeCompare(b.name)).forEach(m => {
         const d = document.createElement('div'); d.className = 'member-item';
         d.innerHTML = `<div><b>${m.name}</b><br><small>ID: ${m.id} | ${m.location || 'N/A'}</small></div>`;
         d.onclick = () => showCard(m); l.appendChild(d);
     });
-    return filtered.length;
 }
 
 function showCard(d) {
