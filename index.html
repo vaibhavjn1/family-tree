@@ -10,29 +10,32 @@
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
         .phone-frame { width: 100%; height: 100%; background: var(--bg); position: relative; display: flex; flex-direction: column; }
         .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        
         .view-area { flex-grow: 1; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; background: #e5e7eb; }
-        #canvas { min-width: 10000px; min-height: 5000px; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 50px 50px; }
+        #canvas, #canvas-unmapped { min-width: 10000px; min-height: 5000px; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 50px 50px; }
+
         #minimap { position: fixed; bottom: 95px; left: 20px; width: 140px; height: 140px; background: rgba(255, 255, 255, 0.95); border: 2px solid var(--primary); border-radius: 8px; z-index: 1000; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); cursor: crosshair; }
         #minimap-viewport { position: absolute; border: 2px solid var(--accent); background: rgba(26, 188, 156, 0.2); pointer-events: none; }
         .minimap-dot { position: absolute; width: 3px; height: 3px; border-radius: 50%; pointer-events: none; }
+
         #directory-view { flex-grow: 1; overflow-y: auto; background: white; display: none; padding-bottom: 80px; }
         .directory-header { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 1px solid #eee; z-index: 10; }
         .search-box { width: 100%; padding: 10px 15px; border-radius: 25px; border: 1px solid #ddd; outline: none; font-size: 14px; box-sizing: border-box; }
-        .match-counter { font-size: 11px; color: var(--accent); font-weight: bold; margin-top: 5px; display: block; }
-        .member-item { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: flex-start; align-items: center; cursor: pointer; }
+        
+        /* Tree Links */
         .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
-        .spouse-parent-link { fill: none; stroke: #94a3b8; stroke-width: 2px; stroke-dasharray: 4; }
+        .spouse-parent-link { fill: none; stroke: #e67e22; stroke-width: 3px; stroke-dasharray: 6,4; opacity: 0.8; }
         .node text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
         .marriage-rect { fill: rgba(248,252,252,0.9); stroke: #94a3b8; stroke-dasharray: 4; stroke-width: 1px; }
+
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
-        .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; animation: pop 0.3s ease-out; }
-        @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        .card-close { position: absolute; top: 10px; right: 15px; font-size: 24px; color: #999; cursor: pointer; }
-        .copy-btn { background: #eee; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; margin-left: 10px; color: #333; }
+        .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; }
+        
+        /* Nav */
         .bottom-nav { height: 75px; background: #fff; border-top: 1px solid #ddd; display: flex; justify-content: space-around; align-items: center; z-index: 100; }
-        .nav-item { text-align: center; font-size: 12px; color: #7f8c8d; flex: 1; cursor: pointer; }
+        .nav-item { text-align: center; font-size: 10px; color: #7f8c8d; flex: 1; cursor: pointer; }
         .nav-item.active { color: var(--accent); font-weight: bold; }
-        .nav-item span { font-size: 24px; display: block; margin-bottom: 2px; }
+        .nav-item span { font-size: 20px; display: block; margin-bottom: 2px; }
         .fab { position: fixed; right: 20px; bottom: 95px; width: 50px; height: 50px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 20; cursor: pointer; }
     </style>
 </head>
@@ -40,7 +43,7 @@
 
 <div class="modal-overlay" id="modal" onclick="closeCard()">
     <div class="member-card" onclick="event.stopPropagation()">
-        <span class="card-close" onclick="closeCard()">×</span>
+        <span style="position:absolute; top:10px; right:15px; font-size:24px; cursor:pointer;" onclick="closeCard()">×</span>
         <h3 id="m-name" style="margin: 0 0 10px 0; color: var(--primary);"></h3>
         <hr>
         <div id="m-details" style="font-size: 14px; line-height: 1.6; color: #444;"></div>
@@ -52,35 +55,46 @@
 
 <div class="modal-overlay" id="form-modal" onclick="closeForm()">
     <div class="member-card" style="width: 95%; height: 85%; max-width: 500px; padding: 10px;" onclick="event.stopPropagation()">
-        <span class="card-close" onclick="closeForm()">×</span>
+        <span style="position:absolute; top:10px; right:15px; font-size:24px; cursor:pointer;" onclick="closeForm()">×</span>
         <iframe id="form-iframe" src="" width="100%" height="100%" frameborder="0"></iframe>
     </div>
 </div>
 
 <div class="phone-frame">
     <header class="app-header">
-        <div style="font-weight:bold; font-size: 18px;">Family Tree</div>
-        <button onclick="location.reload()" style="background:none; border: 1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset App</button>
+        <div style="font-weight:bold; font-size: 16px;" id="header-title">Tree</div>
+        <button onclick="location.reload()" style="background:none; border: 1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset</button>
     </header>
-    <div class="view-area" id="pane"><div id="canvas"></div></div>
-    <div id="minimap" onclick="minimapJump(event)"><div id="minimap-viewport"></div></div>
+    
+    <div class="view-area" id="pane">
+        <div id="canvas"></div>
+    </div>
+
+    <div class="view-area" id="pane-unmapped" style="display:none;">
+        <div id="canvas-unmapped"></div>
+    </div>
+    
     <div id="directory-view">
         <div class="directory-header">
             <input type="text" id="dirSearch" class="search-box" placeholder="Search relatives..." onkeyup="renderDirectory(this.value)">
-            <span id="dirCount" class="match-counter" style="display:none;"></span>
+            <span id="dirCount" style="font-size:11px; color:var(--accent); font-weight:bold; margin-top:5px; display:none;"></span>
         </div>
         <div id="member-list"></div>
     </div>
-    <div class="fab" id="fab-button" onclick="centerNode(root.children[0])">🏠</div>
+
+    <div id="minimap" onclick="minimapJump(event)"><div id="minimap-viewport"></div></div>
+    <div class="fab" id="fab-button" onclick="centerOnDH()">🏠</div>
+
     <div class="bottom-nav">
         <div class="nav-item active" id="tab-tree" onclick="switchTab('tree')"><span>🌳</span>Tree</div>
+        <div class="nav-item" id="tab-unmapped" onclick="switchTab('unmapped')"><span>🗺️</span>Unmapped</div>
         <div class="nav-item" id="tab-members" onclick="switchTab('members')"><span>👥</span>Members</div>
     </div>
 </div>
 
 <script>
 const boxW = 110, boxH = 30, canvasWidth = 10000, canvasHeight = 5000;
-let svg, g, root, allMembers = [], mDataMap = new Map(), lineageData = [], marriageData = [];
+let svg, g, gUnmapped, root, unmappedRoot, allMembers = [], mDataMap = new Map(), lineageData = [], marriageData = [];
 
 const formLinks = {
     details: "https://docs.google.com/forms/d/e/1FAIpQLSeskFqcch7l1KlrrR0kRyJBMZza-7WyKgHQhDoiqxcEBWxSvQ/viewform?embedded=true",
@@ -88,15 +102,27 @@ const formLinks = {
 };
 
 function switchTab(tab) {
-    const isTree = (tab === 'tree');
-    document.getElementById('pane').style.display = isTree ? 'block' : 'none';
-    document.getElementById('directory-view').style.display = isTree ? 'none' : 'block';
-    document.getElementById('minimap').style.display = isTree ? 'block' : 'none';
-    document.getElementById('tab-tree').classList.toggle('active', isTree);
-    document.getElementById('tab-members').classList.toggle('active', !isTree);
-    const fab = document.getElementById('fab-button');
-    if (isTree) { fab.innerHTML = "🏠"; fab.onclick = () => centerNode(root.children[0]); } 
-    else { fab.innerHTML = "➕"; fab.onclick = () => openForm('newMember'); }
+    const panes = ['pane', 'pane-unmapped', 'directory-view'];
+    panes.forEach(p => document.getElementById(p).style.display = 'none');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    
+    if (tab === 'tree') {
+        document.getElementById('pane').style.display = 'block';
+        document.getElementById('tab-tree').classList.add('active');
+        document.getElementById('header-title').innerText = "Tree";
+        document.getElementById('minimap').style.display = 'block';
+    } else if (tab === 'unmapped') {
+        document.getElementById('pane-unmapped').style.display = 'block';
+        document.getElementById('tab-unmapped').classList.add('active');
+        document.getElementById('header-title').innerText = "Tree-unmapped";
+        document.getElementById('minimap').style.display = 'none';
+    } else {
+        document.getElementById('directory-view').style.display = 'block';
+        document.getElementById('tab-members').classList.add('active');
+        document.getElementById('header-title').innerText = "Members";
+        document.getElementById('minimap').style.display = 'none';
+        renderDirectory("");
+    }
 }
 
 async function init() {
@@ -111,98 +137,69 @@ async function init() {
         marriageData = links.filter(l => l.type === 'marriage');
         members.forEach(d => mDataMap.set(d.id, d));
 
-        const childIds = new Set(lineageData.map(l => l.child));
-        const roots = members.filter(m => !childIds.has(m.id));
-
-        // Use a counter to track how many times a primary member has been used in a marriage
-        const primaryOccurrenceCounter = new Map();
-
-        function buildHierarchy(id, visited = new Set()) {
-            const u = mDataMap.get(id); if (!u) return null;
-            
-            // Find ALL marriages for this person
-            const allMarriages = marriageData.filter(x => x.parent === id || x.child === id);
-            
-            // If there's only 0 or 1 marriage, behave normally
-            if (allMarriages.length <= 1) {
-                const mar = allMarriages[0];
-                const spouseId = mar ? (mar.parent === id ? mar.child : mar.parent) : null;
-                const sp = spouseId ? mDataMap.get(spouseId) : null;
-                const k = mar ? mar.parent + '+' + mar.child : id, alt = mar ? mar.child + '+' + mar.parent : id;
-                const children = lineageData.filter(r => r.parent === k || r.parent === alt || r.parent === id)
-                                         .map(r => buildHierarchy(r.child, new Set(visited))).filter(x => x);
-                return { ...u, spouse: sp, children: children.length ? children : null, _direct: children.length, _total: 0 };
-            }
-
-            // MULTIPLE MARRIAGE LOGIC:
-            // Return an array of "virtual nodes" for each marriage
-            // This requires a modification to the recursive structure to handle multiple branches for one ID
-            return allMarriages.map((mar, index) => {
-                const spouseId = mar.parent === id ? mar.child : mar.parent;
-                const sp = mDataMap.get(spouseId);
-                const k = mar.parent + '+' + mar.child, alt = mar.child + '+' + mar.parent;
-                const children = lineageData.filter(r => r.parent === k || r.parent === alt)
-                                         .map(r => buildHierarchy(r.child, new Set(visited))).filter(x => x);
-                
-                // If it's the second marriage or later, wrap name in brackets
-                const displayName = index === 0 ? u.name : `[${u.name}]`;
-                
-                return { 
-                    ...u, 
-                    id: `${u.id}_m${index}`, // Unique ID for D3
-                    realId: u.id, 
-                    name: displayName,
-                    spouse: sp, 
-                    children: children.length ? children : null, 
-                    _direct: children.length, 
-                    _total: 0 
-                };
+        // Logic to separate DH and Unmapped
+        const mainLineageIds = new Set(['DH']);
+        let added = true;
+        while(added) {
+            added = false;
+            lineageData.forEach(l => {
+                if(mainLineageIds.has(l.parent) && !mainLineageIds.has(l.child)) {
+                    mainLineageIds.add(l.child);
+                    added = true;
+                }
             });
         }
 
-        // Modified build to handle the array return from building multiple marriages
-        function flattenBuild(id) {
-            const result = buildHierarchy(id);
-            return Array.isArray(result) ? result : [result];
+        function build(id, visited = new Set()) {
+            if (visited.has(id)) return null; visited.add(id);
+            const u = mDataMap.get(id); if (!u) return null;
+            const mar = marriageData.find(x => x.parent === id || x.child === id);
+            const spouseId = mar ? (mar.parent === id ? mar.child : mar.parent) : null;
+            const spouse = spouseId ? mDataMap.get(spouseId) : null;
+            const k = mar ? mar.parent + '+' + mar.child : id, alt = mar ? mar.child + '+' + mar.parent : id;
+            const ch = lineageData.filter(r => r.parent === k || r.parent === alt || r.parent === id).map(r => build(r.child, new Set(visited))).filter(x => x);
+            return { ...u, spouse, children: ch.length ? ch : null, _direct: ch.length, _total: ch.reduce((a,c)=>a+1+(c._total||0),0) };
         }
 
-        const multiRoot = { id: "GHOST", name: "Universe", children: roots.flatMap(r => flattenBuild(r.id)) };
-        root = d3.hierarchy(multiRoot);
-        root.x0 = canvasWidth / 2; root.y0 = 0;
-        
-        root.descendants().forEach(d => { 
-            if (d.depth > 0) {
-                const isMainRoot = d.depth === 1 && d.data.realId === 'DH';
-                if (!isMainRoot || (d.children)) {
-                    d._children = d.children; d.children = null; 
-                }
-            }
-        });
+        // Tree 1: DH (Primary)
+        root = d3.hierarchy(build('DH'));
+        root.x0 = canvasWidth/2; root.y0 = 0;
+        root.descendants().forEach(d => { if(d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
+
+        // Tree 2: Unmapped
+        const unmappedRoots = members.filter(m => !mainLineageIds.has(m.id) && !lineageData.some(l => l.child === m.id));
+        const ghost = { id: "GHOST", name: "Unmapped", children: unmappedRoots.map(r => build(r.id)) };
+        unmappedRoot = d3.hierarchy(ghost);
+        unmappedRoot.descendants().forEach(d => { if(d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
 
         svg = d3.select("#canvas").append("svg").attr("width", canvasWidth).attr("height", canvasHeight);
-        g = svg.append("g").attr("transform", `translate(${canvasWidth / 2}, 150)`);
-        renderTree(root);
-        centerNode(root.children[0]);
-        renderDirectory("");
+        g = svg.append("g").attr("transform", `translate(${canvasWidth/2}, 150)`);
+        
+        const svgU = d3.select("#canvas-unmapped").append("svg").attr("width", canvasWidth).attr("height", canvasHeight);
+        gUnmapped = svgU.append("g").attr("transform", `translate(${canvasWidth/2}, 150)`);
+
+        renderTree(root, g);
+        renderTree(unmappedRoot, gUnmapped);
+        centerOnDH();
         document.getElementById('pane').addEventListener('scroll', updateMinimap);
-        updateMinimap();
     } catch (err) { console.error(err); }
 }
 
-function renderTree(source) {
-    const tree = d3.tree().nodeSize([boxW * 2.8, 160]);
-    tree(root);
-    const nodes = root.descendants().filter(d => d.depth > 0 && (d.parent.children || d.parent._children));
-    const links = root.links().filter(d => d.source.depth > 0 && d.source.children);
+function renderTree(sourceRoot, container) {
+    const treeLayout = d3.tree().nodeSize([boxW * 2.8, 160]);
+    treeLayout(sourceRoot);
+    const nodes = sourceRoot.descendants().filter(d => d.depth > 0);
+    const links = sourceRoot.links().filter(d => d.source.depth > 0);
 
-    const link = g.selectAll(".link").data(links, d => d.target.data.id);
+    const link = container.selectAll(".link").data(links, d => d.target.data.id);
     link.exit().remove();
-    const lE = link.enter().append("path").attr("class", d => d.source.data.isSpouseParent ? "spouse-parent-link" : "link");
-    link.merge(lE).transition().duration(500).attr("d", d3.linkVertical().x(d => d.x).y(d => d.y));
+    link.enter().append("path").attr("class", d => d.target.data.forceDotted ? "spouse-parent-link" : "link")
+        .merge(link).transition().duration(500).attr("d", d3.linkVertical().x(d => d.x).y(d => d.y));
 
-    const node = g.selectAll(".node").data(nodes, d => d.data.id);
+    const node = container.selectAll(".node").data(nodes, d => d.data.id);
     node.exit().remove();
-    const nE = node.enter().append("g").attr("class", "node").attr("transform", d => `translate(${source.x0 || 0},${source.y0 || 0})`);
+    const nE = node.enter().append("g").attr("class", "node").attr("transform", d => `translate(${sourceRoot.x0 || canvasWidth/2},${sourceRoot.y0 || 0})`);
+    
     node.merge(nE).transition().duration(500).attr("transform", d => `translate(${d.x},${d.y})`);
 
     nE.each(function (d) {
@@ -213,10 +210,9 @@ function renderTree(source) {
             const sG = el.append("g").attr("transform", `translate(${boxW / 2 + 5}, 0)`);
             drawBox(sG, d.data.spouse, 0);
             
-            const hasAncestry = lineageData.some(l => l.child === d.data.spouse.id);
-            if (hasAncestry) {
+            if (lineageData.some(l => l.child === d.data.spouse.id)) {
                 const hash = sG.append("g").attr("transform", `translate(${boxW/2 + 12}, 0)`).style("cursor", "pointer")
-                    .on("click", (e) => { e.stopPropagation(); expandSpouseAncestry(d.data.spouse.id, d); });
+                    .on("click", (e) => { e.stopPropagation(); graftSpouseFamily(d.data.spouse.id, d); });
                 hash.append("circle").attr("r", 8).attr("fill", "#eee").attr("stroke", "#999");
                 hash.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "#333").style("font-size", "10px").text("#");
             }
@@ -225,7 +221,7 @@ function renderTree(source) {
         if (d.children || d._children) {
             const ui = el.append("g").attr("transform", `translate(0, ${boxH / 2 + 12})`).on("click", (e, nD) => {
                 e.stopPropagation(); nD.children ? (nD._children = nD.children, nD.children = null) : (nD.children = nD._children, nD._children = null);
-                renderTree(nD);
+                renderTree(sourceRoot, container);
             });
             ui.append("rect").attr("x", -20).attr("y", -7).attr("width", 40).attr("height", 14).attr("fill", "#2c3e50").attr("rx", 7);
             ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "9px").text(`${d.data._direct}`);
@@ -233,18 +229,23 @@ function renderTree(source) {
             ui.append("text").attr("y", 22).attr("text-anchor", "middle").style("fill", "#2c3e50").style("font-size", "12px").text(d.children ? "-" : "+");
         }
     });
-    nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
     drawMinimapDots();
 }
 
-function expandSpouseAncestry(spouseId, nodeInTree) {
+function graftSpouseFamily(spouseId, nodeInTree) {
     const parentLink = lineageData.find(l => l.child === spouseId);
     if (!parentLink) return;
-    const parentNode = root.children.find(c => c.data.id === parentLink.parent || c.data.realId === parentLink.parent);
-    if (parentNode) {
-        parentNode.data.isSpouseParent = true;
-        if (parentNode._children) { parentNode.children = parentNode._children; parentNode._children = null; }
-        renderTree(parentNode); centerNode(parentNode);
+    
+    // Find parent in the unmapped tree
+    const target = unmappedRoot.descendants().find(d => d.data.id === parentLink.parent);
+    if (target) {
+        // Force path expansion and visibility
+        target.ancestors().forEach(a => { if(a._children) { a.children = a._children; a._children = null; }});
+        target.data.forceDotted = true;
+        switchTab('unmapped');
+        renderTree(unmappedRoot, gUnmapped);
+        const p = document.getElementById('pane-unmapped');
+        p.scrollTo({ left: target.x + (canvasWidth/2) - (p.clientWidth/2), top: target.y + 150 - (p.clientHeight/3), behavior: 'smooth' });
     }
 }
 
@@ -256,28 +257,25 @@ function drawBox(c, d, o) {
 
 function renderDirectory(f = "") {
     const l = document.getElementById('member-list'); l.innerHTML = "";
-    const filtered = allMembers.filter(m => (m.name||"").toLowerCase().includes(f.toLowerCase()) || (m.location||"").toLowerCase().includes(f.toLowerCase()));
-    const countEl = document.getElementById('dirCount');
-    if (f.trim() !== "") { countEl.innerText = `${filtered.length} found`; countEl.style.display = 'block'; } else { countEl.style.display = 'none'; }
+    const filtered = allMembers.filter(m => (m.name||"").toLowerCase().includes(f.toLowerCase()));
+    document.getElementById('dirCount').innerText = `${filtered.length} found`;
+    document.getElementById('dirCount').style.display = f ? 'block' : 'none';
     filtered.sort((a,b)=>a.name.localeCompare(b.name)).forEach(m => {
         const d = document.createElement('div'); d.className = 'member-item';
-        d.innerHTML = `<div><b>${m.name}</b><br><small>ID: ${m.id} | ${m.location || 'N/A'}</small></div>`;
+        d.innerHTML = `<div><b>${m.name}</b><br><small>ID: ${m.id}</small></div>`;
         d.onclick = () => showCard(m); l.appendChild(d);
     });
 }
 
 function showCard(d) {
-    const realId = d.realId || d.id;
-    const member = allMembers.find(m => m.id === realId);
-    document.getElementById('m-name').innerText = member.name;
-    document.getElementById('m-details').innerHTML = `<b>ID:</b> <span>${member.id}</span> <button class="copy-btn" onclick="copyId('${member.id}')">Copy</button><br><b>Gender:</b> ${member.gender}<br><b>Age:</b> ${member.age || 'N/A'}<br><b>Loc:</b> ${member.location || 'N/A'}`;
+    document.getElementById('m-name').innerText = d.name;
+    document.getElementById('m-details').innerHTML = `<b>ID:</b> ${d.id}<br><b>Gender:</b> ${d.gender}<br><b>Age:</b> ${d.age || 'N/A'}<br><b>Loc:</b> ${d.location || 'N/A'}`;
     document.getElementById('modal').style.display = 'flex';
 }
-function copyId(id) { navigator.clipboard.writeText(id).then(() => { alert("Copied ID: " + id); }); }
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
 function openForm(type) { document.getElementById('form-iframe').src = formLinks[type]; document.getElementById('form-modal').style.display = 'flex'; }
-function closeForm() { document.getElementById('form-modal').style.display = 'none'; setTimeout(() => alert("Thanks for filling details..."), 300); }
-function centerNode(d) { if (!d) return; const p = document.getElementById('pane'); p.scrollTo({ left: d.x + (canvasWidth / 2) - (p.clientWidth / 2), top: d.y + 150 - (p.clientHeight / 3), behavior: 'smooth' }); }
+function closeForm() { document.getElementById('form-modal').style.display = 'none'; }
+function centerOnDH() { const p = document.getElementById('pane'); p.scrollTo({ left: canvasWidth/2 - p.clientWidth/2, top: 150, behavior: 'smooth' }); }
 
 function updateMinimap() {
     const pane = document.getElementById('pane'), viewport = document.getElementById('minimap-viewport');
@@ -289,18 +287,12 @@ function updateMinimap() {
 function drawMinimapDots() {
     const map = document.getElementById('minimap'); map.querySelectorAll('.minimap-dot').forEach(dot => dot.remove());
     const scaleX = 140 / canvasWidth, scaleY = 140 / canvasHeight;
-    root.descendants().filter(d => d.depth > 0 && (d.parent.children)).forEach(d => {
+    root.descendants().filter(d => d.depth > 0 && d.parent.children).forEach(d => {
         const dot = document.createElement('div'); dot.className = 'minimap-dot';
         dot.style.background = d.data.gender === 'M' ? 'var(--male)' : 'var(--female)';
         dot.style.left = ((d.x + canvasWidth/2) * scaleX) + "px"; dot.style.top = ((d.y + 150) * scaleY) + "px";
         map.appendChild(dot);
     });
-}
-
-function minimapJump(e) {
-    const pane = document.getElementById('pane'), rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left, y = e.clientY - rect.top;
-    pane.scrollTo({ left: (x * (canvasWidth / 140)) - (pane.clientWidth / 2), top: (y * (canvasHeight / 140)) - (pane.clientHeight / 2), behavior: 'smooth' });
 }
 
 window.onload = init;
