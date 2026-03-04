@@ -207,3 +207,10 @@ KUC3,KUC3K2,lineage
 KUC5,KUC5K1,lineage
 KUC5,KUC5K2,lineage
 KUC5,KUC5K3,lineage
+C6,C6K1,lineage
+C6,C6K2,lineage
+C6,C6K3,lineage
+C6K2,C6K2S,marriage
+C6K3,C6K3S,marriage
+C6K2K3,C6K2K3S,marriage
+
