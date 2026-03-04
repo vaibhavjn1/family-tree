@@ -242,10 +242,15 @@ DC,DCK4,lineage
 DC,DCK5,lineage
 DC,DCK6,lineage
 DC,DCK7,lineage
+DCK1,DCK1K1,lineage
+DCK1,DCK1K2,lineage
+DCK1,DCK1K3,lineage
+DCK1,DCK1K4,lineage
+DCK1,DCK1K5,lineage
 DCK1,DCK1S,marriage
 DCK2,DCK2S,marriage
 DCK3,DCK3S,marriage
-DCK4,DCK4S,marriage
+DCK4,DCK4S,marriage,
 DCK5,DCK5S,marriage
 DCK6,DCK6S,marriage
 DCK7,DCK7S,marriage
@@ -253,3 +258,8 @@ DCK1K1,DCK1K1S,marriage
 DCK1K2,DCK1K2S,marriage
 DCK1K3,DCK1K3S,marriage
 DCK1K4,DCK1K4S,marriage
+DCK1K1,DCK1K1K1,lineage
+DCK1K2,DCK1K2K1,lineage
+DCK1K3,DCK1K3K1,lineage
+DCK7,DCK7K1,lineage
+DCK7,DCK7K2,lineage
