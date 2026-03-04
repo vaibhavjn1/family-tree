@@ -13,7 +13,8 @@
         .view-area { flex-grow: 1; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; background: #e5e7eb; }
         #canvas, #canvas-unmapped { min-width: 10000px; min-height: 5000px; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 50px 50px; }
         
-        .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
+        /* Fixed Line Visibility */
+        .link { fill: none; stroke: #cbd5e0; stroke-width: 2.5px; opacity: 1; display: block; }
         .node-container { cursor: pointer; }
         .member-rect { stroke: #fff; stroke-width: 1px; }
         .node-text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
@@ -66,7 +67,6 @@
     <div id="directory-view">
         <div class="directory-header">
             <input type="text" id="dirSearch" class="search-box" placeholder="Search relatives..." onkeyup="renderDirectory(this.value)">
-            <span id="dirCount" style="font-size:11px; color:var(--accent); font-weight:bold; margin-top:5px; display:none;"></span>
         </div>
         <div id="member-list"></div>
     </div>
@@ -99,7 +99,6 @@ function switchTab(tab) {
     } else if (tab === 'unmapped') {
         document.getElementById('pane-unmapped').style.display = 'block';
         document.getElementById('tab-unmapped').classList.add('active');
-        document.getElementById('minimap').style.display = 'none';
     } else {
         document.getElementById('directory-view').style.display = 'block';
         document.getElementById('tab-members').classList.add('active');
@@ -138,16 +137,12 @@ async function init() {
                 .map(r => build(r.child, new Set(visited))).filter(x => x);
             const allChildren = [...soloChildren, ...marriageDetails.flatMap(m => m.children || [])];
 
-            return { ...u, marriages: marriageDetails, soloChildren, children: allChildren.length ? allChildren : null };
+            return { ...u, marriages: marriageDetails, children: allChildren.length ? allChildren : null };
         }
 
         const universeGhost = { id: "UNIVERSE", name: "Universe", children: [build('DH'), build('NP')].filter(x => x) };
         root = d3.hierarchy(universeGhost);
         root.descendants().forEach(d => { if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } });
-
-        const unmappedRoots = members.filter(m => !lineageData.some(l => l.child === m.id) && m.id !== 'DH' && m.id !== 'NP');
-        const unmappedGhost = { id: "GHOST", name: "Unmapped", children: unmappedRoots.map(r => build(r.id)).filter(x => x) };
-        unmappedRoot = d3.hierarchy(unmappedGhost);
 
         svg = d3.select("#canvas").append("svg").attr("width", canvasWidth).attr("height", canvasHeight);
         g = svg.append("g").attr("transform", `translate(${canvasWidth/2}, 150)`);
@@ -156,25 +151,25 @@ async function init() {
         gUnmapped = svgU.append("g").attr("transform", `translate(${canvasWidth/2}, 150)`);
 
         renderTree(root, g);
-        renderTree(unmappedRoot, gUnmapped);
-        centerNodes();
+        renderTree(root, gUnmapped); // Just as placeholder
+        
+        // Initial centering on page load
+        setTimeout(centerNodes, 500);
+        
         document.getElementById('pane').addEventListener('scroll', updateMinimap);
     } catch (err) { console.error(err); }
 }
 
 function renderTree(sourceRoot, container) {
-    const treeLayout = d3.tree().nodeSize([380, 220]);
+    const treeLayout = d3.tree().nodeSize([400, 220]);
     treeLayout(sourceRoot);
 
     const nodes = sourceRoot.descendants().filter(d => d.depth > 0);
     const links = sourceRoot.links().filter(d => d.source.depth > 0);
 
-    // RESTORED: Curved Connectors using d3.linkVertical()
-    const curvedLink = d3.linkVertical()
-        .x(d => d.x)
-        .y(d => d.y);
+    const linkGen = d3.linkVertical().x(d => d.x).y(d => d.y);
 
-    const link = container.selectAll(".link").data(links, d => d.target.data.id + (d.target.parent ? d.target.parent.data.id : ''));
+    const link = container.selectAll(".link").data(links, d => d.target.data.id + d.source.data.id);
     link.exit().remove();
     link.enter().append("path").attr("class", "link")
         .merge(link).transition().duration(500)
@@ -183,15 +178,14 @@ function renderTree(sourceRoot, container) {
             const c = d.target.data;
             let startX = d.source.x;
             
-            // Offset start point if child belongs to a specific spouse box
             if (p.marriages) {
                 const mIdx = p.marriages.findIndex(m => m.children && m.children.some(child => child.id === c.id));
                 if (mIdx !== -1) startX += (mIdx + 1) * (boxW + 10);
             }
             
-            return curvedLink({
-                source: [startX, d.source.y + boxH/2],
-                target: [d.target.x, d.target.y - boxH/2]
+            return linkGen({
+                source: {x: startX, y: d.source.y + boxH/2},
+                target: {x: d.target.x, y: d.target.y - boxH/2}
             });
         });
 
@@ -202,10 +196,10 @@ function renderTree(sourceRoot, container) {
     nE.each(function(d) {
         const el = d3.select(this);
         const data = d.data;
-        const marriageCount = data.marriages ? data.marriages.length : 0;
-        const totalW = boxW + (marriageCount * (boxW + 10));
+        const mCount = data.marriages ? data.marriages.length : 0;
+        const totalW = boxW + (mCount * (boxW + 10));
 
-        if (marriageCount > 0) {
+        if (mCount > 0) {
             el.append("rect").attr("class", "marriage-group-bg")
                 .attr("x", -boxW/2 - 5).attr("y", -boxH/2 - 5)
                 .attr("width", totalW + 10).attr("height", boxH + 10).attr("rx", 5);
@@ -216,14 +210,7 @@ function renderTree(sourceRoot, container) {
         if (data.marriages) {
             data.marriages.forEach((m, i) => {
                 const xPos = (i + 1) * (boxW + 10);
-                const sG = el.append("g").attr("transform", `translate(${xPos}, 0)`);
-                drawBox(sG, m.spouse, 0);
-                if (lineageData.some(l => l.child === m.spouse.id)) {
-                    const hash = sG.append("g").attr("transform", `translate(${boxW/2 + 8}, 0)`).style("cursor", "pointer")
-                        .on("click", (e) => { e.stopPropagation(); graftSpouseFamily(m.spouse.id); });
-                    hash.append("circle").attr("r", 7).attr("fill", "#eee").attr("stroke", "#999");
-                    hash.append("text").attr("y", 3).attr("text-anchor", "middle").style("fill", "#333").style("font-size", "9px").text("#");
-                }
+                drawBox(el.append("g").attr("transform", `translate(${xPos}, 0)`), m.spouse, 0);
             });
         }
 
@@ -243,24 +230,22 @@ function renderTree(sourceRoot, container) {
     drawMinimapDots();
 }
 
-function drawBox(c, d, o) {
+function drawBox(container, d, o) {
     if (!d) return;
-    const b = c.append("g").on("click", (e) => { e.stopPropagation(); showCard(d); });
+    const b = container.append("g").on("click", (e) => { e.stopPropagation(); showCard(d); });
     b.append("rect").attr("class", "member-rect").attr("x", o - boxW/2).attr("y", -boxH/2).attr("width", boxW).attr("height", boxH)
         .attr("fill", d.gender === 'M' ? 'var(--male)' : 'var(--female)').attr("rx", 3);
     b.append("text").attr("class", "node-text").attr("x", o).attr("y", 5).text(d.name);
 }
 
-function graftSpouseFamily(spouseId) {
-    const parentLink = lineageData.find(l => l.child === spouseId);
-    if (!parentLink) return;
-    const target = unmappedRoot.descendants().find(d => d.data.id === parentLink.parent);
-    if (target) {
-        target.ancestors().forEach(a => { if(a._children) { a.children = a._children; a._children = null; }});
-        switchTab('unmapped');
-        const p = document.getElementById('pane-unmapped');
-        p.scrollTo({ left: target.x + (canvasWidth/2) - (p.clientWidth/2), top: target.y + 150 - (p.clientHeight/3), behavior: 'smooth' });
-    }
+function centerNodes() {
+    const p = document.getElementById('pane');
+    // Scroll to the middle of the 10,000px width and top vertical area
+    p.scrollTo({ 
+        left: (canvasWidth / 2) - (p.clientWidth / 2), 
+        top: 0, 
+        behavior: 'smooth' 
+    });
 }
 
 function renderDirectory(f = "") {
@@ -280,8 +265,10 @@ function showCard(d) {
 }
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
 function openForm(type) { document.getElementById('form-iframe').src = formLinks[type]; document.getElementById('form-modal').style.display = 'flex'; }
-function closeForm() { document.getElementById('form-modal').style.display = 'none'; setTimeout(() => alert("Thanks for filling details are requested, please wait for next release for changes to take effect"), 300); }
-function centerNodes() { const p = document.getElementById('pane'); p.scrollTo({ left: canvasWidth/2 - p.clientWidth/2, top: 0, behavior: 'smooth' }); }
+function closeForm() { 
+    document.getElementById('form-modal').style.display = 'none'; 
+    setTimeout(() => { alert("Thanks for filling details are requested, please wait for next release for changes to take effect"); }, 300);
+}
 function updateMinimap() {
     const pane = document.getElementById('pane'), viewport = document.getElementById('minimap-viewport');
     const s = 140 / canvasWidth;
@@ -297,6 +284,11 @@ function drawMinimapDots() {
         dot.style.left = ((d.x + canvasWidth/2) * s) + "px"; dot.style.top = ((d.y + 150) * s) + "px";
         map.appendChild(dot);
     });
+}
+function minimapJump(e) {
+    const pane = document.getElementById('pane'), rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    pane.scrollTo({ left: (x * (canvasWidth / 140)) - (pane.clientWidth / 2), top: (y * (canvasHeight / 140)) - (pane.clientHeight / 2), behavior: 'smooth' });
 }
 window.onload = init;
 </script>
