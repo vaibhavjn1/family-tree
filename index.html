@@ -88,23 +88,19 @@ function switchTab(tab) {
     const panes = ['pane', 'pane-unmapped', 'directory-view'];
     panes.forEach(p => document.getElementById(p).style.display = 'none');
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    
     if (tab === 'tree') {
         document.getElementById('pane').style.display = 'block';
         document.getElementById('tab-tree').classList.add('active');
         document.getElementById('minimap').style.display = 'block';
-        document.getElementById('header-title').innerText = "Tree";
         updateMinimap();
     } else if (tab === 'unmapped') {
         document.getElementById('pane-unmapped').style.display = 'block';
         document.getElementById('tab-unmapped').classList.add('active');
         document.getElementById('minimap').style.display = 'none';
-        document.getElementById('header-title').innerText = "Unmapped Nodes";
     } else {
         document.getElementById('directory-view').style.display = 'block';
         document.getElementById('tab-members').classList.add('active');
         document.getElementById('minimap').style.display = 'none';
-        document.getElementById('header-title').innerText = "Members";
         renderDirectory("");
     }
 }
@@ -121,18 +117,13 @@ async function init() {
         marriageData = links.filter(l => l.type === 'marriage');
         members.forEach(d => mDataMap.set(d.id, d));
 
-        // TRACING LOGIC: Identify who belongs to DH and NP
         const mappedIds = new Set(['DH', 'NP']);
         let changed = true;
         while (changed) {
             changed = false;
             lineageData.forEach(l => {
-                if (mappedIds.has(l.parent) && !mappedIds.has(l.child)) {
-                    mappedIds.add(l.child);
-                    changed = true;
-                }
+                if (mappedIds.has(l.parent) && !mappedIds.has(l.child)) { mappedIds.add(l.child); changed = true; }
             });
-            // Also map through marriages
             marriageData.forEach(m => {
                 if (mappedIds.has(m.parent) && !mappedIds.has(m.child)) { mappedIds.add(m.child); changed = true; }
                 if (mappedIds.has(m.child) && !mappedIds.has(m.parent)) { mappedIds.add(m.parent); changed = true; }
@@ -156,20 +147,27 @@ async function init() {
 
             const soloChildren = lineageData.filter(r => r.parent === id)
                 .map(r => build(r.child, new Set(visited))).filter(x => x);
+            
             const allChildren = [...soloChildren, ...marriageDetails.flatMap(m => m.children || [])];
+            
+            // CALCULATE TOTAL DESCENDANTS
+            const totalDesc = allChildren.reduce((acc, child) => acc + 1 + (child._total || 0), 0);
 
-            return { ...u, marriages: marriageDetails, children: allChildren.length ? allChildren : null };
+            return { 
+                ...u, 
+                marriages: marriageDetails, 
+                children: allChildren.length ? allChildren : null,
+                _direct: allChildren.length,
+                _total: totalDesc 
+            };
         }
 
-        // 1. Primary Tree
         const universeGhost = { id: "UNIVERSE", name: "Universe", children: [build('DH'), build('NP')].filter(x => x) };
         root = d3.hierarchy(universeGhost);
         root.descendants().forEach(d => { if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } });
 
-        // 2. Unmapped Tree (Roots that are NOT in mappedIds)
         const unmappedRoots = members.filter(m => !mappedIds.has(m.id) && !lineageData.some(l => l.child === m.id));
-        const unmappedGhost = { id: "GHOST", name: "Unmapped", children: unmappedRoots.map(r => build(r.id)).filter(x => x) };
-        unmappedRoot = d3.hierarchy(unmappedGhost);
+        unmappedRoot = d3.hierarchy({ id: "GHOST", children: unmappedRoots.map(r => build(r.id)).filter(x => x) });
 
         svg = d3.select("#canvas").append("svg").attr("width", canvasWidth).attr("height", canvasHeight);
         g = svg.append("g").attr("transform", `translate(${canvasWidth/2}, 150)`);
@@ -186,7 +184,7 @@ async function init() {
 }
 
 function renderTree(sourceRoot, container) {
-    const treeLayout = d3.tree().nodeSize([450, 220]);
+    const treeLayout = d3.tree().nodeSize([450, 240]);
     treeLayout(sourceRoot);
     const nodes = sourceRoot.descendants().filter(d => d.depth > 0);
     const links = sourceRoot.links().filter(d => d.source.depth > 0);
@@ -222,11 +220,16 @@ function renderTree(sourceRoot, container) {
                 drawBox(el.append("g").attr("transform", `translate(${xPos}, 0)`), m.spouse, 0);
             });
         }
+        
+        // RESTORED: COUNTER BADGE AND TOGGLE
         if (d.children || d._children) {
             const ui = el.append("g").attr("transform", `translate(${totalW/2 - boxW/2}, ${boxH/2 + 15})`)
                 .on("click", (e) => { e.stopPropagation(); d.children ? (d._children = d.children, d.children = null) : (d.children = d._children, d._children = null); renderTree(sourceRoot, container); });
-            ui.append("circle").attr("r", 10).attr("fill", "var(--primary)");
+            ui.append("circle").attr("r", 12).attr("fill", "var(--primary)");
             ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "14px").text(d.children ? "-" : "+");
+            // Pipe count: Direct | Total
+            ui.append("text").attr("y", 25).attr("text-anchor", "middle").style("fill", "var(--primary)").style("font-weight", "bold").style("font-size", "10px")
+                .text(`${d.data._direct} | ${d.data._total}`);
         }
     });
     node.merge(nE).transition().duration(500).attr("transform", d => `translate(${d.x},${d.y})`);
@@ -239,7 +242,12 @@ function drawBox(container, d, o) {
     b.append("text").attr("class", "node-text").attr("x", o).attr("y", 5).text(d.name);
 }
 
-function centerNodes() { const p = document.getElementById('pane'); p.scrollTo({ left: (canvasWidth/2) - (p.clientWidth/2), top: 0, behavior: 'smooth' }); }
+function centerNodes() {
+    const pane = document.getElementById('pane');
+    // Centering on DH and NP (which are around canvasWidth/2)
+    pane.scrollTo({ left: (canvasWidth/2) - (pane.clientWidth/2), top: 0, behavior: 'smooth' });
+}
+
 function renderDirectory(f = "") {
     const l = document.getElementById('member-list'); l.innerHTML = "";
     const filtered = allMembers.filter(m => (m.name||"").toLowerCase().includes(f.toLowerCase()));
@@ -262,6 +270,11 @@ function updateMinimap() {
     const s = 140 / canvasWidth;
     viewport.style.width = (pane.clientWidth * s) + "px"; viewport.style.height = (pane.clientHeight * s) + "px";
     viewport.style.left = (pane.scrollLeft * s) + "px"; viewport.style.top = (pane.scrollTop * s) + "px";
+}
+function minimapJump(e) {
+    const pane = document.getElementById('pane'), rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    pane.scrollTo({ left: (x * (canvasWidth / 140)) - (pane.clientWidth / 2), top: (y * (canvasHeight / 140)) - (pane.clientHeight / 2), behavior: 'smooth' });
 }
 window.onload = init;
 </script>
