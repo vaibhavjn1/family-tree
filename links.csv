@@ -115,7 +115,8 @@ Vk,Sti,marriage
 Ak,Jyt,marriage
 Ncy,Smt,marriage
 Prj,Niy,marriage
-NP,NK,lineage
+NP,NP2,lineage
+NP2,NK,lineage
 NK,N1,lineage
 NK,N2,lineage
 NK,N3,lineage
