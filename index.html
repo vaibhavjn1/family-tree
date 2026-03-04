@@ -13,17 +13,14 @@
         .view-area { flex-grow: 1; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; background: #e5e7eb; }
         #canvas, #canvas-unmapped { min-width: 10000px; min-height: 5000px; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 50px 50px; }
         
-        /* Links */
         .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
         .spouse-parent-link { fill: none; stroke: #e67e22; stroke-width: 3px; stroke-dasharray: 6,4; opacity: 0.8; }
         
-        /* Node Styling */
         .node-container { cursor: pointer; }
         .member-rect { stroke: #fff; stroke-width: 1px; }
         .node-text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
         .marriage-group-bg { fill: rgba(248,252,252,0.9); stroke: #94a3b8; stroke-dasharray: 4; stroke-width: 1px; }
         
-        /* Controls */
         #minimap { position: fixed; bottom: 95px; left: 20px; width: 140px; height: 140px; background: rgba(255, 255, 255, 0.95); border: 2px solid var(--primary); border-radius: 8px; z-index: 1000; overflow: hidden; cursor: crosshair; }
         #minimap-viewport { position: absolute; border: 2px solid var(--accent); background: rgba(26, 188, 156, 0.2); pointer-events: none; }
         .minimap-dot { position: absolute; width: 3px; height: 3px; border-radius: 50%; pointer-events: none; }
@@ -36,7 +33,6 @@
         .nav-item.active { color: var(--accent); font-weight: bold; }
         .nav-item span { font-size: 20px; display: block; margin-bottom: 2px; }
         .fab { position: fixed; right: 20px; bottom: 95px; width: 50px; height: 50px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 20; cursor: pointer; }
-        
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
         .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; }
     </style>
@@ -105,6 +101,7 @@ function switchTab(tab) {
     } else if (tab === 'unmapped') {
         document.getElementById('pane-unmapped').style.display = 'block';
         document.getElementById('tab-unmapped').classList.add('active');
+        document.getElementById('minimap').style.display = 'none';
     } else {
         document.getElementById('directory-view').style.display = 'block';
         document.getElementById('tab-members').classList.add('active');
@@ -129,38 +126,43 @@ async function init() {
             if (!u || visited.has(id)) return null;
             visited.add(id);
 
-            // Get all marriages for this person
             const marriages = marriageData.filter(m => m.parent === id || m.child === id);
             
-            // Map marriages into a list of spouses and their specific children
             const marriageDetails = marriages.map(mar => {
                 const spouseId = mar.parent === id ? mar.child : mar.parent;
                 const spouse = mDataMap.get(spouseId);
                 const k = mar.parent + '+' + mar.child, alt = mar.child + '+' + mar.parent;
-                
-                // Get children specifically for this parent-pair
                 const children = lineageData
                     .filter(r => r.parent === k || r.parent === alt)
                     .map(r => build(r.child, new Set(visited)))
                     .filter(x => x);
 
-                return { spouse, children: children.length ? children : null };
+                return { spouse, children: children.length ? children : null, pairId: k };
             });
 
-            // Return consolidated node
+            const soloChildren = lineageData.filter(r => r.parent === id)
+                .map(r => build(r.child, new Set(visited)))
+                .filter(x => x);
+
+            // Important: We still keep a 'children' property for D3 hierarchy to work,
+            // but we fill it with ALL children from ALL marriages combined.
+            const allChildren = [...soloChildren, ...marriageDetails.flatMap(m => m.children || [])];
+
             return {
                 ...u,
                 marriages: marriageDetails,
-                // Fallback for solo lineages without marriage links
-                soloChildren: lineageData.filter(r => r.parent === id)
-                    .map(r => build(r.child, new Set(visited)))
-                    .filter(x => x)
+                soloChildren: soloChildren,
+                children: allChildren.length ? allChildren : null
             };
         }
 
         const universeGhost = { id: "UNIVERSE", name: "Universe", children: [build('DH'), build('NP')].filter(x => x) };
         root = d3.hierarchy(universeGhost);
-        root.descendants().forEach(d => { if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } });
+        
+        // Initial Collapse logic
+        root.descendants().forEach(d => { 
+            if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } 
+        });
 
         const unmappedRoots = members.filter(m => !lineageData.some(l => l.child === m.id) && m.id !== 'DH' && m.id !== 'NP');
         const unmappedGhost = { id: "GHOST", name: "Unmapped", children: unmappedRoots.map(r => build(r.id)).filter(x => x) };
@@ -180,30 +182,28 @@ async function init() {
 }
 
 function renderTree(sourceRoot, container) {
-    // We adjust the tree layout to handle wider boxes
-    const treeLayout = d3.tree().nodeSize([300, 200]);
+    const treeLayout = d3.tree().nodeSize([350, 220]);
     treeLayout(sourceRoot);
 
     const nodes = sourceRoot.descendants().filter(d => d.depth > 0);
     const links = sourceRoot.links().filter(d => d.source.depth > 0);
 
-    const link = container.selectAll(".link").data(links, d => d.target.data.id + d.target.parent.data.id);
+    const link = container.selectAll(".link").data(links, d => d.target.data.id + (d.target.parent ? d.target.parent.data.id : ''));
     link.exit().remove();
     link.enter().append("path").attr("class", "link")
         .merge(link).transition().duration(500)
         .attr("d", d => {
-            // Find parent-pair offset for the link start
             const p = d.source.data;
             const c = d.target.data;
-            let offsetX = 0;
+            let startX = d.source.x;
             
-            // If child belongs to a specific marriage, shift link start to that spouse
+            // Map link start to the specific spouse box if applicable
             if (p.marriages) {
                 const mIdx = p.marriages.findIndex(m => m.children && m.children.some(child => child.id === c.id));
-                if (mIdx !== -1) offsetX = (mIdx + 1) * (boxW + 10);
+                if (mIdx !== -1) startX += (mIdx + 1) * (boxW + 10);
             }
             
-            return `M${d.source.x + offsetX},${d.source.y + boxH/2} V${d.target.y - boxH/2} H${d.target.x}`;
+            return `M${startX},${d.source.y + boxH/2} V${d.target.y - boxH/2} H${d.target.x}`;
         });
 
     const node = container.selectAll(".node-container").data(nodes, d => d.data.id);
@@ -218,24 +218,20 @@ function renderTree(sourceRoot, container) {
         const marriageCount = data.marriages ? data.marriages.length : 0;
         const totalW = boxW + (marriageCount * (boxW + 10));
 
-        // Group Background
         if (marriageCount > 0) {
             el.append("rect").attr("class", "marriage-group-bg")
                 .attr("x", -boxW/2 - 5).attr("y", -boxH/2 - 5)
                 .attr("width", totalW + 10).attr("height", boxH + 10).attr("rx", 5);
         }
 
-        // Primary Member
         drawBox(el, data, 0);
 
-        // Spouses
         if (data.marriages) {
             data.marriages.forEach((m, i) => {
                 const xPos = (i + 1) * (boxW + 10);
                 const sG = el.append("g").attr("transform", `translate(${xPos}, 0)`);
                 drawBox(sG, m.spouse, 0);
 
-                // Hierarchy Toggle (If spouse family exists)
                 if (lineageData.some(l => l.child === m.spouse.id)) {
                     const hash = sG.append("g").attr("transform", `translate(${boxW/2 + 8}, 0)`).style("cursor", "pointer")
                         .on("click", (e) => { e.stopPropagation(); graftSpouseFamily(m.spouse.id); });
@@ -245,16 +241,26 @@ function renderTree(sourceRoot, container) {
             });
         }
 
-        // Parent Toggle for Children
+        // RE-ADDED: Expansion Toggle
+        // Show toggle if there are children (either currently shown or hidden)
         if (d.children || d._children) {
-            const ui = el.append("g").attr("transform", `translate(0, ${boxH/2 + 10})`)
+            const ui = el.append("g").attr("transform", `translate(${totalW / 2 - boxW/2}, ${boxH/2 + 15})`)
                 .on("click", (e) => {
                     e.stopPropagation();
-                    d.children = d.children ? null : d._children;
+                    if (d.children) {
+                        d._children = d.children;
+                        d.children = null;
+                    } else {
+                        d.children = d._children;
+                        d._children = null;
+                    }
                     renderTree(sourceRoot, container);
                 });
-            ui.append("circle").attr("r", 8).attr("fill", "var(--primary)");
-            ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "12px").text(d.children ? "-" : "+");
+            ui.append("circle").attr("r", 10).attr("fill", "var(--primary)");
+            ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "14px").text(d.children ? "-" : "+");
+            
+            // Show count of direct children
+            ui.append("text").attr("y", 22).attr("text-anchor", "middle").style("fill", "var(--primary)").style("font-size", "10px").text(d.data._direct || (d._children ? d._children.length : 0));
         }
     });
 
@@ -299,7 +305,10 @@ function showCard(d) {
 }
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
 function openForm(type) { document.getElementById('form-iframe').src = formLinks[type]; document.getElementById('form-modal').style.display = 'flex'; }
-function closeForm() { document.getElementById('form-modal').style.display = 'none'; setTimeout(() => alert("Thanks for filling details are requested, please wait for next release for changes to take effect"), 300); }
+function closeForm() { 
+    document.getElementById('form-modal').style.display = 'none'; 
+    setTimeout(() => { alert("Thanks for filling details are requested, please wait for next release for changes to take effect"); }, 300);
+}
 function centerNodes() { const p = document.getElementById('pane'); p.scrollTo({ left: canvasWidth/2 - p.clientWidth/2, top: 0, behavior: 'smooth' }); }
 function updateMinimap() {
     const pane = document.getElementById('pane'), viewport = document.getElementById('minimap-viewport');
