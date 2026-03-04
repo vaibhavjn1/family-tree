@@ -8,30 +8,69 @@
     <style>
         :root { --primary: #2c3e50; --accent: #1abc9c; --bg: #f4f7f6; --male: #3498db; --female: #e91e63; }
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+        
         .phone-frame { width: 100%; height: 100%; background: var(--bg); position: relative; display: flex; flex-direction: column; }
         .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .view-area { flex-grow: 1; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; }
-        #canvas { width: 5000px; height: 5000px; background: white; }
+        
+        .view-area { 
+            flex-grow: 1; 
+            overflow: auto; 
+            position: relative; 
+            -webkit-overflow-scrolling: touch;
+            background: #e5e7eb;
+        }
+        #canvas { 
+            width: 5000px; 
+            height: 5000px; 
+            background: white; 
+            background-image: radial-gradient(#ddd 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* MINI-MAP STYLING */
+        #minimap {
+            position: fixed;
+            bottom: 95px;
+            left: 20px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid var(--primary);
+            border-radius: 8px;
+            z-index: 1000;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            cursor: crosshair;
+        }
+        #minimap-viewport {
+            position: absolute;
+            border: 1.5px solid var(--accent);
+            background: rgba(26, 188, 156, 0.15);
+            pointer-events: none;
+        }
+        .minimap-dot {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: #cbd5e0;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
         #directory-view { flex-grow: 1; overflow-y: auto; background: white; display: none; padding-bottom: 80px; }
         .directory-header { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 1px solid #eee; z-index: 10; }
         .search-box { width: 100%; padding: 10px 15px; border-radius: 25px; border: 1px solid #ddd; outline: none; font-size: 14px; box-sizing: border-box; }
         .match-counter { font-size: 11px; color: var(--accent); font-weight: bold; margin-top: 5px; display: block; }
-        .member-item { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: flex-start; align-items: center; cursor: pointer; }
         
-        /* Tree Styling */
         .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
         .spouse-parent-link { fill: none; stroke: #94a3b8; stroke-width: 2px; stroke-dasharray: 4; }
         .node text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
         .marriage-rect { fill: rgba(248,252,252,0.9); stroke: #94a3b8; stroke-dasharray: 4; stroke-width: 1px; }
 
-        /* Modals */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
-        .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; animation: pop 0.3s ease-out; }
-        @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; }
         .card-close { position: absolute; top: 10px; right: 15px; font-size: 24px; color: #999; cursor: pointer; }
-        .copy-btn { background: #eee; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; margin-left: 10px; color: #333; }
-
-        /* Navigation */
+        
         .bottom-nav { height: 75px; background: #fff; border-top: 1px solid #ddd; display: flex; justify-content: space-around; align-items: center; z-index: 100; }
         .nav-item { text-align: center; font-size: 12px; color: #7f8c8d; flex: 1; cursor: pointer; }
         .nav-item.active { color: var(--accent); font-weight: bold; }
@@ -62,18 +101,25 @@
 
 <div class="phone-frame">
     <header class="app-header">
-        <div style="font-weight:bold; font-size: 14px;">Tree</div>
+        <div style="font-weight:bold; font-size: 14px;">Family Tree</div>
         <div style="flex-grow: 1; margin: 0 10px;">
             <input type="text" id="treeSearch" class="search-box" placeholder="Search..." onkeyup="syncSearch(this.value)">
             <span id="treeCount" class="match-counter" style="display:none;"></span>
         </div>
         <button onclick="location.reload()" style="background:none; border:1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset</button>
     </header>
-    <div class="view-area" id="pane"><div id="canvas"></div></div>
+    
+    <div class="view-area" id="pane">
+        <div id="canvas"></div>
+    </div>
+
+    <div id="minimap" onclick="minimapJump(event)">
+        <div id="minimap-viewport"></div>
+    </div>
     
     <div id="directory-view">
         <div class="directory-header">
-            <input type="text" id="dirSearch" class="search-box" placeholder="Search members..." onkeyup="syncSearch(this.value)">
+            <input type="text" id="dirSearch" class="search-box" placeholder="Search relatives..." onkeyup="syncSearch(this.value)">
             <span id="dirCount" class="match-counter" style="display:none;"></span>
         </div>
         <div id="member-list"></div>
@@ -100,17 +146,12 @@ function switchTab(tab) {
     const isTree = (tab === 'tree');
     document.getElementById('pane').style.display = isTree ? 'block' : 'none';
     document.getElementById('directory-view').style.display = isTree ? 'none' : 'block';
+    document.getElementById('minimap').style.display = isTree ? 'block' : 'none';
     document.getElementById('tab-tree').classList.toggle('active', isTree);
     document.getElementById('tab-members').classList.toggle('active', !isTree);
-    
     const fab = document.getElementById('fab-button');
-    if (isTree) {
-        fab.innerHTML = "🏠";
-        fab.onclick = () => centerNode(root.children[0]);
-    } else {
-        fab.innerHTML = "➕";
-        fab.onclick = () => openForm('newMember');
-    }
+    if (isTree) { fab.innerHTML = "🏠"; fab.onclick = () => centerNode(root.children[0]); } 
+    else { fab.innerHTML = "➕"; fab.onclick = () => openForm('newMember'); }
 }
 
 async function init() {
@@ -125,7 +166,6 @@ async function init() {
         marriageData = links.filter(l => l.type === 'marriage');
         members.forEach(d => mDataMap.set(d.id, d));
 
-        // Find roots (people with no parents in lineage)
         const childIds = new Set(lineageData.map(l => l.child));
         const roots = members.filter(m => !childIds.has(m.id));
 
@@ -135,17 +175,8 @@ async function init() {
             const spouseId = mar ? (mar.parent === id ? mar.child : mar.parent) : null;
             const sp = spouseId ? mDataMap.get(spouseId) : null;
             const k = mar ? mar.parent + '+' + mar.child : id, alt = mar ? mar.child + '+' + mar.parent : id;
-            
-            const children = lineageData.filter(r => r.parent === k || r.parent === alt || r.parent === id)
-                                     .map(r => buildHierarchy(r.child)).filter(x => x);
-
-            return { 
-                ...u, 
-                spouse: sp, 
-                children: children.length ? children : null,
-                _direct: children.length,
-                _total: children.reduce((a, c) => a + 1 + (c._total || 0), 0)
-            };
+            const children = lineageData.filter(r => r.parent === k || r.parent === alt || r.parent === id).map(r => buildHierarchy(r.child)).filter(x => x);
+            return { ...u, spouse: sp, children: children.length ? children : null, _direct: children.length, _total: children.reduce((a, c) => a + 1 + (c._total || 0), 0) };
         }
 
         const multiRoot = { id: "GHOST", name: "Universe", children: roots.map(r => buildHierarchy(r.id)) };
@@ -154,10 +185,15 @@ async function init() {
         root.descendants().forEach(d => { if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
 
         svg = d3.select("#canvas").append("svg").attr("width", size).attr("height", size);
-        g = svg.append("g").attr("transform", `translate(${size / 2}, 100)`);
+        g = svg.append("g").attr("transform", `translate(${size / 2}, 150)`);
+        
         renderTree(root);
         centerNode(root.children[0]);
         renderDirectory("");
+        
+        // Minimap setup
+        document.getElementById('pane').addEventListener('scroll', updateMinimap);
+        updateMinimap();
     } catch (err) { console.error(err); }
 }
 
@@ -167,10 +203,9 @@ function renderTree(source) {
     const nodes = root.descendants().filter(d => d.depth > 0);
     const links = root.links().filter(d => d.source.depth > 0);
 
-    const link = g.selectAll(".link-group").data(links, d => d.target.data.id);
+    const link = g.selectAll(".link").data(links, d => d.target.data.id);
     link.exit().remove();
     const lE = link.enter().append("path").attr("class", d => d.source.data.isSpouseParent ? "spouse-parent-link" : "link");
-    
     link.merge(lE).transition().duration(500).attr("d", d3.linkVertical().x(d => d.x).y(d => d.y));
 
     const node = g.selectAll(".node").data(nodes, d => d.data.id);
@@ -183,22 +218,12 @@ function renderTree(source) {
         if (d.data.spouse) {
             el.append("rect").attr("class", "marriage-rect").attr("x", -boxW - 10).attr("y", -boxH / 2 - 5).attr("width", boxW * 2 + 20).attr("height", boxH + 15);
             drawBox(el, d.data, -boxW / 2 - 5);
-            
-            // Spouse Box
             const sG = el.append("g").attr("transform", `translate(${boxW / 2 + 5}, 0)`);
             drawBox(sG, d.data.spouse, 0);
-            
-            // Spouse Parent Toggle (# Icon)
-            const hash = sG.append("g").attr("transform", `translate(${boxW/2 + 10}, 0)`).style("cursor", "pointer")
-                .on("click", (e) => {
-                    e.stopPropagation();
-                    expandSpouseAncestry(d.data.spouse.id, d);
-                });
+            const hash = sG.append("g").attr("transform", `translate(${boxW/2 + 10}, 0)`).style("cursor", "pointer").on("click", (e) => { e.stopPropagation(); expandSpouseAncestry(d.data.spouse.id, d); });
             hash.append("circle").attr("r", 8).attr("fill", "#eee").attr("stroke", "#999");
             hash.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "#333").style("font-size", "10px").text("#");
-        } else {
-            drawBox(el, d.data, 0);
-        }
+        } else { drawBox(el, d.data, 0); }
 
         if (d.children || d._children) {
             const ui = el.append("g").attr("transform", `translate(0, ${boxH / 2 + 12})`).on("click", (e, nD) => {
@@ -212,30 +237,58 @@ function renderTree(source) {
         }
     });
     nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+    drawMinimapDots();
 }
 
 /**
- * FIXED: Surgical Ancestry Expansion
- * Inverts the hierarchy temporarily to find parents and link with dotted lines
+ * MINIMAP LOGIC
  */
+function updateMinimap() {
+    const pane = document.getElementById('pane');
+    const viewport = document.getElementById('minimap-viewport');
+    const scale = 120 / size; 
+    
+    viewport.style.width = (pane.clientWidth * scale) + "px";
+    viewport.style.height = (pane.clientHeight * scale) + "px";
+    viewport.style.left = (pane.scrollLeft * scale) + "px";
+    viewport.style.top = (pane.scrollTop * scale) + "px";
+}
+
+function drawMinimapDots() {
+    const map = document.getElementById('minimap');
+    map.querySelectorAll('.minimap-dot').forEach(dot => dot.remove());
+    const scale = 120 / size;
+    root.descendants().filter(d => d.depth > 0).forEach(d => {
+        const dot = document.createElement('div');
+        dot.className = 'minimap-dot';
+        dot.style.left = ((d.x + size/2) * scale) + "px";
+        dot.style.top = ((d.y + 150) * scale) + "px";
+        map.appendChild(dot);
+    });
+}
+
+function minimapJump(e) {
+    const pane = document.getElementById('pane');
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const scale = size / 120;
+    
+    pane.scrollTo({
+        left: (x * scale) - (pane.clientWidth / 2),
+        top: (y * scale) - (pane.clientHeight / 2),
+        behavior: 'smooth'
+    });
+}
+
 function expandSpouseAncestry(spouseId, nodeInTree) {
     const parentLink = lineageData.find(l => l.child === spouseId);
-    if (!parentLink) {
-        alert("No parent records found for this spouse.");
-        return;
-    }
-
-    // Logic: Locate the parent in the multi-root children and move it here
+    if (!parentLink) return alert("Ancestry not found.");
     const parentNode = root.children.find(c => c.data.id === parentLink.parent);
     if (parentNode) {
-        // Mark as spouse-parent for dotted line styling
         parentNode.data.isSpouseParent = true;
-        
-        // Expansion logic: We are essentially Grafting the tree
-        // For simplicity in this D3 implementation, we reveal the existing root-level node
         if (parentNode._children) { parentNode.children = parentNode._children; parentNode._children = null; }
-        renderTree(parentNode);
-        centerNode(parentNode);
+        renderTree(parentNode); centerNode(parentNode);
     }
 }
 
@@ -254,15 +307,12 @@ function syncSearch(val) {
 
 function applyTreeFilter(val, count) {
     const t = val.toLowerCase();
-    document.getElementById('treeCount').innerText = `${count} found`;
-    document.getElementById('treeCount').style.display = val ? 'block' : 'none';
-    document.getElementById('dirCount').innerText = `${count} found`;
-    document.getElementById('dirCount').style.display = val ? 'block' : 'none';
-
-    if (!val) {
-        root.descendants().forEach(d => { if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
-        renderTree(root); return;
-    }
+    ["treeCount", "dirCount"].forEach(id => {
+        const el = document.getElementById(id);
+        el.innerText = `${count} found`;
+        el.style.display = val ? 'block' : 'none';
+    });
+    if (!val) { root.descendants().forEach(d => { if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } }); renderTree(root); return; }
     const matches = root.descendants().filter(d => (d.data.name||"").toLowerCase().includes(t) || (d.data.location||"").toLowerCase().includes(t));
     const vIds = new Set();
     matches.forEach(d => d.ancestors().forEach(a => vIds.add(a.data.id)));
@@ -287,14 +337,19 @@ function renderDirectory(f = "") {
 
 function showCard(d) {
     document.getElementById('m-name').innerText = d.name;
-    document.getElementById('m-details').innerHTML = `<b>ID:</b> <span>${d.id}</span> <button class="copy-btn" onclick="copyId('${d.id}')">Copy</button><br><b>Gender:</b> ${d.gender}<br><b>Age:</b> ${d.age || 'N/A'}<br><b>Location:</b> ${d.location || 'N/A'}<br><b>Phone:</b> ${d.phone || 'N/A'}`;
+    document.getElementById('m-details').innerHTML = `<b>ID:</b> <span>${d.id}</span> <button onclick="copyId('${d.id}')">Copy</button><br><b>Gender:</b> ${d.gender}<br><b>Age:</b> ${d.age || 'N/A'}<br><b>Loc:</b> ${d.location || 'N/A'}`;
     document.getElementById('modal').style.display = 'flex';
 }
-function copyId(id) { navigator.clipboard.writeText(id).then(() => { const b = event.target; b.innerText = "Copied!"; setTimeout(()=>b.innerText="Copy",1500); }); }
+function copyId(id) { navigator.clipboard.writeText(id).then(() => { alert("Copied ID: " + id); }); }
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
 function openForm(type) { document.getElementById('form-iframe').src = formLinks[type]; document.getElementById('form-modal').style.display = 'flex'; }
 function closeForm() { document.getElementById('form-modal').style.display = 'none'; setTimeout(() => alert("Thanks for filling details..."), 300); }
-function centerNode(d) { const p = document.getElementById('pane'); p.scrollTo({ left: d.x + (size / 2) - (p.clientWidth / 2), top: d.y + 100 - (p.clientHeight / 3), behavior: 'smooth' }); }
+
+function centerNode(d) { 
+    if (!d) return;
+    const p = document.getElementById('pane');
+    p.scrollTo({ left: d.x + (size / 2) - (p.clientWidth / 2), top: d.y + 150 - (p.clientHeight / 3), behavior: 'smooth' }); 
+}
 
 window.onload = init;
 </script>
