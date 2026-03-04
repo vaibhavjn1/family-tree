@@ -1,7 +1,141 @@
-const boxW = 110, boxH = 30;
-const canvasWidth = 10000; 
-const canvasHeight = 5000;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Symmetry Family App</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root { --primary: #2c3e50; --accent: #1abc9c; --bg: #f4f7f6; --male: #3498db; --female: #e91e63; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+        
+        .phone-frame { width: 100%; height: 100%; background: var(--bg); position: relative; display: flex; flex-direction: column; }
+        .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        
+        /* INFINITE SCROLL CANVAS */
+        .view-area { 
+            flex-grow: 1; 
+            overflow: auto; 
+            position: relative; 
+            -webkit-overflow-scrolling: touch;
+            background: #e5e7eb;
+        }
+        #canvas { 
+            min-width: 10000px; 
+            min-height: 5000px; 
+            background: white; 
+            background-image: radial-gradient(#ddd 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
 
+        /* MINI-MAP */
+        #minimap {
+            position: fixed;
+            bottom: 95px;
+            left: 20px;
+            width: 140px;
+            height: 140px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 2px solid var(--primary);
+            border-radius: 8px;
+            z-index: 1000;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            cursor: crosshair;
+        }
+        #minimap-viewport {
+            position: absolute;
+            border: 2px solid var(--accent);
+            background: rgba(26, 188, 156, 0.2);
+            pointer-events: none;
+        }
+        .minimap-dot { position: absolute; width: 3px; height: 3px; border-radius: 50%; pointer-events: none; }
+
+        /* DIRECTORY VIEW */
+        #directory-view { flex-grow: 1; overflow-y: auto; background: white; display: none; padding-bottom: 80px; }
+        .directory-header { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 1px solid #eee; z-index: 10; }
+        .search-box { width: 100%; padding: 10px 15px; border-radius: 25px; border: 1px solid #ddd; outline: none; font-size: 14px; box-sizing: border-box; }
+        .match-counter { font-size: 11px; color: var(--accent); font-weight: bold; margin-top: 5px; display: block; }
+        .member-item { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: flex-start; align-items: center; cursor: pointer; }
+        
+        /* TREE ELEMENTS */
+        .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
+        .spouse-parent-link { fill: none; stroke: #94a3b8; stroke-width: 2px; stroke-dasharray: 4; }
+        .node text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
+        .marriage-rect { fill: rgba(248,252,252,0.9); stroke: #94a3b8; stroke-dasharray: 4; stroke-width: 1px; }
+
+        /* MODALS */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
+        .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; animation: pop 0.3s ease-out; }
+        @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .card-close { position: absolute; top: 10px; right: 15px; font-size: 24px; color: #999; cursor: pointer; }
+        .copy-btn { background: #eee; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; margin-left: 10px; color: #333; }
+
+        /* NAV */
+        .bottom-nav { height: 75px; background: #fff; border-top: 1px solid #ddd; display: flex; justify-content: space-around; align-items: center; z-index: 100; }
+        .nav-item { text-align: center; font-size: 12px; color: #7f8c8d; flex: 1; cursor: pointer; }
+        .nav-item.active { color: var(--accent); font-weight: bold; }
+        .nav-item span { font-size: 24px; display: block; margin-bottom: 2px; }
+        .fab { position: fixed; right: 20px; bottom: 95px; width: 50px; height: 50px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 20; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="modal-overlay" id="modal" onclick="closeCard()">
+    <div class="member-card" onclick="event.stopPropagation()">
+        <span class="card-close" onclick="closeCard()">×</span>
+        <h3 id="m-name" style="margin: 0 0 10px 0; color: var(--primary);"></h3>
+        <hr>
+        <div id="m-details" style="font-size: 14px; line-height: 1.6; color: #444;"></div>
+        <div style="margin-top: 20px; text-align: center; border-top: 1px solid #eee; padding-top: 15px;">
+            <button onclick="openForm('details')" style="background: var(--accent); color: white; border: none; padding: 12px 15px; border-radius: 20px; font-weight: bold; width: 100%;">📝 Add Details</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="form-modal" onclick="closeForm()">
+    <div class="member-card" style="width: 95%; height: 85%; max-width: 500px; padding: 10px;" onclick="event.stopPropagation()">
+        <span class="card-close" onclick="closeForm()">×</span>
+        <iframe id="form-iframe" src="" width="100%" height="100%" frameborder="0"></iframe>
+    </div>
+</div>
+
+<div class="phone-frame">
+    <header class="app-header">
+        <div style="font-weight:bold; font-size: 14px;">Tree</div>
+        <div style="flex-grow: 1; margin: 0 10px;">
+            <input type="text" id="treeSearch" class="search-box" placeholder="Search..." onkeyup="syncSearch(this.value)">
+            <span id="treeCount" class="match-counter" style="display:none;"></span>
+        </div>
+        <button onclick="location.reload()" style="background:none; border:1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset</button>
+    </header>
+    
+    <div class="view-area" id="pane">
+        <div id="canvas"></div>
+    </div>
+
+    <div id="minimap" onclick="minimapJump(event)">
+        <div id="minimap-viewport"></div>
+    </div>
+    
+    <div id="directory-view">
+        <div class="directory-header">
+            <input type="text" id="dirSearch" class="search-box" placeholder="Search relatives..." onkeyup="syncSearch(this.value)">
+            <span id="dirCount" class="match-counter" style="display:none;"></span>
+        </div>
+        <div id="member-list"></div>
+    </div>
+
+    <div class="fab" id="fab-button" onclick="centerNode(root.children[0])">🏠</div>
+
+    <div class="bottom-nav">
+        <div class="nav-item active" id="tab-tree" onclick="switchTab('tree')"><span>🌳</span>Tree</div>
+        <div class="nav-item" id="tab-members" onclick="switchTab('members')"><span>👥</span>Members</div>
+    </div>
+</div>
+
+<script>
+const boxW = 110, boxH = 30, canvasWidth = 10000, canvasHeight = 5000;
 let svg, g, root, allMembers = [], mDataMap = new Map(), lineageData = [], marriageData = [];
 
 const formLinks = {
@@ -9,73 +143,48 @@ const formLinks = {
     newMember: "https://docs.google.com/forms/d/e/1FAIpQLSdmgTda1cVu_dkElZt_XWGcaMPV681wImIDjx5LH4z1dH6p-A/viewform?embedded=true"
 };
 
-/**
- * 1. DYNAMIC DATA LOADER
- * This replaces the hardcoded 'rawMembers' block with a real CSV fetcher.
- */
+function switchTab(tab) {
+    const isTree = (tab === 'tree');
+    document.getElementById('pane').style.display = isTree ? 'block' : 'none';
+    document.getElementById('directory-view').style.display = isTree ? 'none' : 'block';
+    document.getElementById('minimap').style.display = isTree ? 'block' : 'none';
+    document.getElementById('tab-tree').classList.toggle('active', isTree);
+    document.getElementById('tab-members').classList.toggle('active', !isTree);
+    const fab = document.getElementById('fab-button');
+    if (isTree) { fab.innerHTML = "🏠"; fab.onclick = () => centerNode(root.children[0]); } 
+    else { fab.innerHTML = "➕"; fab.onclick = () => openForm('newMember'); }
+}
+
 async function init() {
     try {
-        // 't' creates a unique timestamp to force the browser to download the NEWEST CSV files
         const t = new Date().getTime();
-        
         const [members, links] = await Promise.all([
             d3.csv(`members.csv?v=${t}`),
             d3.csv(`links.csv?v=${t}`)
         ]);
-
-        if (!members.length || !links.length) {
-            throw new Error("CSV files are empty or could not be parsed.");
-        }
-
         allMembers = members;
         lineageData = links.filter(l => l.type === 'lineage');
         marriageData = links.filter(l => l.type === 'marriage');
-        
-        // Map members by ID for quick lookup
-        mDataMap.clear();
         members.forEach(d => mDataMap.set(d.id, d));
 
-        // Detect Roots (Members who aren't listed as a 'child' in any lineage)
         const childIds = new Set(lineageData.map(l => l.child));
         const roots = members.filter(m => !childIds.has(m.id));
 
         function buildHierarchy(id) {
-            const u = mDataMap.get(id); 
-            if (!u) return null;
-            
+            const u = mDataMap.get(id); if (!u) return null;
             const mar = marriageData.find(x => x.parent === id || x.child === id);
             const spouseId = mar ? (mar.parent === id ? mar.child : mar.parent) : null;
-            const spouse = spouseId ? mDataMap.get(spouseId) : null;
-            
-            const k = mar ? mar.parent + '+' + mar.child : id;
-            const alt = mar ? mar.child + '+' + mar.parent : id;
-            
-            const children = lineageData
-                .filter(r => r.parent === k || r.parent === alt || r.parent === id)
-                .map(r => buildHierarchy(r.child))
-                .filter(x => x);
-
-            return { 
-                ...u, 
-                spouse, 
-                children: children.length ? children : null, 
-                _direct: children.length, 
-                _total: children.reduce((a, c) => a + 1 + (c._total || 0), 0) 
-            };
+            const sp = spouseId ? mDataMap.get(spouseId) : null;
+            const k = mar ? mar.parent + '+' + mar.child : id, alt = mar ? mar.child + '+' + mar.parent : id;
+            const children = lineageData.filter(r => r.parent === k || r.parent === alt || r.parent === id).map(r => buildHierarchy(r.child)).filter(x => x);
+            return { ...u, spouse: sp, children: children.length ? children : null, _direct: children.length, _total: children.reduce((a, c) => a + 1 + (c._total || 0), 0) };
         }
 
-        // Combine multiple family roots into one "Universe"
         const multiRoot = { id: "GHOST", name: "Universe", children: roots.map(r => buildHierarchy(r.id)) };
         root = d3.hierarchy(multiRoot);
         root.x0 = canvasWidth / 2; root.y0 = 0;
-        
-        // Collapse nodes by default
-        root.descendants().forEach(d => { 
-            if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } 
-        });
+        root.descendants().forEach(d => { if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
 
-        // Initialize SVG
-        d3.select("#canvas").selectAll("*").remove();
         svg = d3.select("#canvas").append("svg").attr("width", canvasWidth).attr("height", canvasHeight);
         g = svg.append("g").attr("transform", `translate(${canvasWidth / 2}, 150)`);
         
@@ -83,14 +192,150 @@ async function init() {
         centerNode(root.children[0]);
         renderDirectory("");
         
-        // Setup Mini-Map sync
         document.getElementById('pane').addEventListener('scroll', updateMinimap);
         updateMinimap();
+    } catch (err) { console.error(err); }
+}
 
-    } catch (err) {
-        console.error("FATAL ERROR LOADING CSV:", err);
-        alert("Critical Error: members.csv or links.csv could not be loaded. Check browser console.");
+function renderTree(source) {
+    const tree = d3.tree().nodeSize([boxW * 2.8, 160]);
+    tree(root);
+    const nodes = root.descendants().filter(d => d.depth > 0);
+    const links = root.links().filter(d => d.source.depth > 0);
+
+    const link = g.selectAll(".link").data(links, d => d.target.data.id);
+    link.exit().remove();
+    const lE = link.enter().append("path").attr("class", d => d.source.data.isSpouseParent ? "spouse-parent-link" : "link");
+    link.merge(lE).transition().duration(500).attr("d", d3.linkVertical().x(d => d.x).y(d => d.y));
+
+    const node = g.selectAll(".node").data(nodes, d => d.data.id);
+    node.exit().remove();
+    const nE = node.enter().append("g").attr("class", "node").attr("transform", d => `translate(${source.x0 || 0},${source.y0 || 0})`);
+    node.merge(nE).transition().duration(500).attr("transform", d => `translate(${d.x},${d.y})`);
+
+    nE.each(function (d) {
+        const el = d3.select(this);
+        if (d.data.spouse) {
+            el.append("rect").attr("class", "marriage-rect").attr("x", -boxW - 10).attr("y", -boxH / 2 - 5).attr("width", boxW * 2 + 20).attr("height", boxH + 15);
+            drawBox(el, d.data, -boxW / 2 - 5);
+            const sG = el.append("g").attr("transform", `translate(${boxW / 2 + 5}, 0)`);
+            drawBox(sG, d.data.spouse, 0);
+            const hash = sG.append("g").attr("transform", `translate(${boxW/2 + 10}, 0)`).style("cursor", "pointer").on("click", (e) => { e.stopPropagation(); expandSpouseAncestry(d.data.spouse.id, d); });
+            hash.append("circle").attr("r", 8).attr("fill", "#eee").attr("stroke", "#999");
+            hash.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "#333").style("font-size", "10px").text("#");
+        } else { drawBox(el, d.data, 0); }
+
+        if (d.children || d._children) {
+            const ui = el.append("g").attr("transform", `translate(0, ${boxH / 2 + 12})`).on("click", (e, nD) => {
+                e.stopPropagation(); nD.children ? (nD._children = nD.children, nD.children = null) : (nD.children = nD._children, nD._children = null);
+                renderTree(nD);
+            });
+            ui.append("rect").attr("x", -20).attr("y", -7).attr("width", 40).attr("height", 14).attr("fill", "#2c3e50").attr("rx", 7);
+            ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "9px").text(`${d.data._direct}|${d.data._total}`);
+            ui.append("circle").attr("cy", 18).attr("r", 7).attr("fill", "white").attr("stroke", "#2c3e50");
+            ui.append("text").attr("y", 22).attr("text-anchor", "middle").style("fill", "#2c3e50").style("font-size", "12px").text(d.children ? "-" : "+");
+        }
+    });
+    nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+    drawMinimapDots();
+}
+
+function updateMinimap() {
+    const pane = document.getElementById('pane');
+    const viewport = document.getElementById('minimap-viewport');
+    const scaleX = 140 / canvasWidth, scaleY = 140 / canvasHeight;
+    viewport.style.width = (pane.clientWidth * scaleX) + "px";
+    viewport.style.height = (pane.clientHeight * scaleY) + "px";
+    viewport.style.left = (pane.scrollLeft * scaleX) + "px";
+    viewport.style.top = (pane.scrollTop * scaleY) + "px";
+}
+
+function drawMinimapDots() {
+    const map = document.getElementById('minimap');
+    map.querySelectorAll('.minimap-dot').forEach(dot => dot.remove());
+    const scaleX = 140 / canvasWidth, scaleY = 140 / canvasHeight;
+    root.descendants().filter(d => d.depth > 0).forEach(d => {
+        const dot = document.createElement('div');
+        dot.className = 'minimap-dot';
+        dot.style.background = d.data.gender === 'M' ? 'var(--male)' : 'var(--female)';
+        dot.style.left = ((d.x + canvasWidth/2) * scaleX) + "px";
+        dot.style.top = ((d.y + 150) * scaleY) + "px";
+        map.appendChild(dot);
+    });
+}
+
+function minimapJump(e) {
+    const pane = document.getElementById('pane'), rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    pane.scrollTo({ left: (x * (canvasWidth / 140)) - (pane.clientWidth / 2), top: (y * (canvasHeight / 140)) - (pane.clientHeight / 2), behavior: 'smooth' });
+}
+
+function expandSpouseAncestry(spouseId, nodeInTree) {
+    const parentLink = lineageData.find(l => l.child === spouseId);
+    if (!parentLink) return alert("Ancestry not found.");
+    const parentNode = root.children.find(c => c.data.id === parentLink.parent);
+    if (parentNode) {
+        parentNode.data.isSpouseParent = true;
+        if (parentNode._children) { parentNode.children = parentNode._children; parentNode._children = null; }
+        renderTree(parentNode); centerNode(parentNode);
     }
 }
 
-// ... Rest of your renderTree, showCard, and navigation functions remain the same
+function drawBox(c, d, o) {
+    const b = c.append("g").on("click", (e) => { e.stopPropagation(); showCard(d); });
+    b.append("rect").attr("x", o - boxW / 2).attr("y", -boxH / 2).attr("width", boxW).attr("height", boxH).attr("fill", d.gender === 'M' ? 'var(--male)' : 'var(--female)');
+    b.append("text").attr("x", o).attr("y", 5).text(d.name);
+}
+
+function syncSearch(val) {
+    document.getElementById('treeSearch').value = val;
+    document.getElementById('dirSearch').value = val;
+    const count = renderDirectory(val);
+    applyTreeFilter(val, count);
+}
+
+function applyTreeFilter(val, count) {
+    const t = val.toLowerCase();
+    ["treeCount", "dirCount"].forEach(id => {
+        const el = document.getElementById(id);
+        el.innerText = `${count} found`;
+        el.style.display = val ? 'block' : 'none';
+    });
+    if (!val) { root.descendants().forEach(d => { if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; } }); renderTree(root); return; }
+    const matches = root.descendants().filter(d => (d.data.name||"").toLowerCase().includes(t) || (d.data.location||"").toLowerCase().includes(t));
+    const vIds = new Set();
+    matches.forEach(d => d.ancestors().forEach(a => vIds.add(a.data.id)));
+    root.descendants().forEach(d => {
+        if (vIds.has(d.data.id)) { if (d._children) { d.children = d._children; d._children = null; } }
+        else { if (d.children) { d._children = d.children; d.children = null; } }
+    });
+    renderTree(root);
+    if (matches.length) centerNode(matches[0]);
+}
+
+function renderDirectory(f = "") {
+    const l = document.getElementById('member-list'); l.innerHTML = "";
+    const filtered = allMembers.filter(m => (m.name||"").toLowerCase().includes(f.toLowerCase()) || (m.location||"").toLowerCase().includes(f.toLowerCase()));
+    filtered.sort((a,b)=>a.name.localeCompare(b.name)).forEach(m => {
+        const d = document.createElement('div'); d.className = 'member-item';
+        d.innerHTML = `<div><b>${m.name}</b><br><small>ID: ${m.id} | ${m.location || 'N/A'}</small></div>`;
+        d.onclick = () => showCard(m); l.appendChild(d);
+    });
+    return filtered.length;
+}
+
+function showCard(d) {
+    document.getElementById('m-name').innerText = d.name;
+    document.getElementById('m-details').innerHTML = `<b>ID:</b> <span>${d.id}</span> <button class="copy-btn" onclick="copyId('${d.id}')">Copy</button><br><b>Gender:</b> ${d.gender}<br><b>Age:</b> ${d.age || 'N/A'}<br><b>Loc:</b> ${d.location || 'N/A'}`;
+    document.getElementById('modal').style.display = 'flex';
+}
+function copyId(id) { navigator.clipboard.writeText(id).then(() => { alert("Copied ID: " + id); }); }
+function closeCard() { document.getElementById('modal').style.display = 'none'; }
+function openForm(type) { document.getElementById('form-iframe').src = formLinks[type]; document.getElementById('form-modal').style.display = 'flex'; }
+function closeForm() { document.getElementById('form-modal').style.display = 'none'; setTimeout(() => alert("Thanks for filling details..."), 300); }
+function centerNode(d) { if (!d) return; const p = document.getElementById('pane'); p.scrollTo({ left: d.x + (canvasWidth / 2) - (p.clientWidth / 2), top: d.y + 150 - (p.clientHeight / 3), behavior: 'smooth' }); }
+
+window.onload = init;
+</script>
+</body>
+</html>
