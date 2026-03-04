@@ -10,31 +10,25 @@
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
         .phone-frame { width: 100%; height: 100%; background: var(--bg); position: relative; display: flex; flex-direction: column; }
         .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        
         .view-area { flex-grow: 1; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; background: #e5e7eb; }
         #canvas { min-width: 10000px; min-height: 5000px; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 50px 50px; }
-
         #minimap { position: fixed; bottom: 95px; left: 20px; width: 140px; height: 140px; background: rgba(255, 255, 255, 0.95); border: 2px solid var(--primary); border-radius: 8px; z-index: 1000; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); cursor: crosshair; }
         #minimap-viewport { position: absolute; border: 2px solid var(--accent); background: rgba(26, 188, 156, 0.2); pointer-events: none; }
         .minimap-dot { position: absolute; width: 3px; height: 3px; border-radius: 50%; pointer-events: none; }
-
         #directory-view { flex-grow: 1; overflow-y: auto; background: white; display: none; padding-bottom: 80px; }
         .directory-header { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 1px solid #eee; z-index: 10; }
         .search-box { width: 100%; padding: 10px 15px; border-radius: 25px; border: 1px solid #ddd; outline: none; font-size: 14px; box-sizing: border-box; }
         .match-counter { font-size: 11px; color: var(--accent); font-weight: bold; margin-top: 5px; display: block; }
         .member-item { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: flex-start; align-items: center; cursor: pointer; }
-        
         .link { fill: none; stroke: #cbd5e0; stroke-width: 2px; }
         .spouse-parent-link { fill: none; stroke: #94a3b8; stroke-width: 2px; stroke-dasharray: 4; }
         .node text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
         .marriage-rect { fill: rgba(248,252,252,0.9); stroke: #94a3b8; stroke-dasharray: 4; stroke-width: 1px; }
-
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
         .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; animation: pop 0.3s ease-out; }
         @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .card-close { position: absolute; top: 10px; right: 15px; font-size: 24px; color: #999; cursor: pointer; }
         .copy-btn { background: #eee; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; margin-left: 10px; color: #333; }
-
         .bottom-nav { height: 75px; background: #fff; border-top: 1px solid #ddd; display: flex; justify-content: space-around; align-items: center; z-index: 100; }
         .nav-item { text-align: center; font-size: 12px; color: #7f8c8d; flex: 1; cursor: pointer; }
         .nav-item.active { color: var(--accent); font-weight: bold; }
@@ -117,35 +111,68 @@ async function init() {
         marriageData = links.filter(l => l.type === 'marriage');
         members.forEach(d => mDataMap.set(d.id, d));
 
-        // PRIMARY ROOTS ONLY (Main family ancestors)
         const childIds = new Set(lineageData.map(l => l.child));
         const roots = members.filter(m => !childIds.has(m.id));
 
+        // Use a counter to track how many times a primary member has been used in a marriage
+        const primaryOccurrenceCounter = new Map();
+
         function buildHierarchy(id, visited = new Set()) {
-            if (visited.has(id)) return null; 
-            visited.add(id);
-
             const u = mDataMap.get(id); if (!u) return null;
-            const mar = marriageData.find(x => x.parent === id || x.child === id);
-            const spouseId = mar ? (mar.parent === id ? mar.child : mar.parent) : null;
-            const sp = spouseId ? mDataMap.get(spouseId) : null;
-            const k = mar ? mar.parent + '+' + mar.child : id, alt = mar ? mar.child + '+' + mar.parent : id;
             
-            const children = lineageData.filter(r => r.parent === k || r.parent === alt || r.parent === id)
-                                     .map(r => buildHierarchy(r.child, new Set(visited))).filter(x => x);
+            // Find ALL marriages for this person
+            const allMarriages = marriageData.filter(x => x.parent === id || x.child === id);
+            
+            // If there's only 0 or 1 marriage, behave normally
+            if (allMarriages.length <= 1) {
+                const mar = allMarriages[0];
+                const spouseId = mar ? (mar.parent === id ? mar.child : mar.parent) : null;
+                const sp = spouseId ? mDataMap.get(spouseId) : null;
+                const k = mar ? mar.parent + '+' + mar.child : id, alt = mar ? mar.child + '+' + mar.parent : id;
+                const children = lineageData.filter(r => r.parent === k || r.parent === alt || r.parent === id)
+                                         .map(r => buildHierarchy(r.child, new Set(visited))).filter(x => x);
+                return { ...u, spouse: sp, children: children.length ? children : null, _direct: children.length, _total: 0 };
+            }
 
-            return { ...u, spouse: sp, children: children.length ? children : null, _direct: children.length, _total: children.reduce((a, c) => a + 1 + (c._total || 0), 0) };
+            // MULTIPLE MARRIAGE LOGIC:
+            // Return an array of "virtual nodes" for each marriage
+            // This requires a modification to the recursive structure to handle multiple branches for one ID
+            return allMarriages.map((mar, index) => {
+                const spouseId = mar.parent === id ? mar.child : mar.parent;
+                const sp = mDataMap.get(spouseId);
+                const k = mar.parent + '+' + mar.child, alt = mar.child + '+' + mar.parent;
+                const children = lineageData.filter(r => r.parent === k || r.parent === alt)
+                                         .map(r => buildHierarchy(r.child, new Set(visited))).filter(x => x);
+                
+                // If it's the second marriage or later, wrap name in brackets
+                const displayName = index === 0 ? u.name : `[${u.name}]`;
+                
+                return { 
+                    ...u, 
+                    id: `${u.id}_m${index}`, // Unique ID for D3
+                    realId: u.id, 
+                    name: displayName,
+                    spouse: sp, 
+                    children: children.length ? children : null, 
+                    _direct: children.length, 
+                    _total: 0 
+                };
+            });
         }
 
-        const multiRoot = { id: "GHOST", name: "Universe", children: roots.map(r => buildHierarchy(r.id)) };
+        // Modified build to handle the array return from building multiple marriages
+        function flattenBuild(id) {
+            const result = buildHierarchy(id);
+            return Array.isArray(result) ? result : [result];
+        }
+
+        const multiRoot = { id: "GHOST", name: "Universe", children: roots.flatMap(r => flattenBuild(r.id)) };
         root = d3.hierarchy(multiRoot);
         root.x0 = canvasWidth / 2; root.y0 = 0;
         
-        // COLLAPSE ALL PARALLEL BRANCHES BY DEFAULT
         root.descendants().forEach(d => { 
             if (d.depth > 0) {
-                // If this is a root node other than DH, hide it
-                const isMainRoot = d.depth === 1 && d.data.id === 'DH';
+                const isMainRoot = d.depth === 1 && d.data.realId === 'DH';
                 if (!isMainRoot || (d.children)) {
                     d._children = d.children; d.children = null; 
                 }
@@ -155,7 +182,7 @@ async function init() {
         svg = d3.select("#canvas").append("svg").attr("width", canvasWidth).attr("height", canvasHeight);
         g = svg.append("g").attr("transform", `translate(${canvasWidth / 2}, 150)`);
         renderTree(root);
-        centerNode(root.children.find(c => c.data.id === 'DH') || root.children[0]);
+        centerNode(root.children[0]);
         renderDirectory("");
         document.getElementById('pane').addEventListener('scroll', updateMinimap);
         updateMinimap();
@@ -186,7 +213,6 @@ function renderTree(source) {
             const sG = el.append("g").attr("transform", `translate(${boxW / 2 + 5}, 0)`);
             drawBox(sG, d.data.spouse, 0);
             
-            // Check if spouse has parents in data
             const hasAncestry = lineageData.some(l => l.child === d.data.spouse.id);
             if (hasAncestry) {
                 const hash = sG.append("g").attr("transform", `translate(${boxW/2 + 12}, 0)`).style("cursor", "pointer")
@@ -202,7 +228,7 @@ function renderTree(source) {
                 renderTree(nD);
             });
             ui.append("rect").attr("x", -20).attr("y", -7).attr("width", 40).attr("height", 14).attr("fill", "#2c3e50").attr("rx", 7);
-            ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "9px").text(`${d.data._direct}|${d.data._total}`);
+            ui.append("text").attr("y", 4).attr("text-anchor", "middle").style("fill", "white").style("font-size", "9px").text(`${d.data._direct}`);
             ui.append("circle").attr("cy", 18).attr("r", 7).attr("fill", "white").attr("stroke", "#2c3e50");
             ui.append("text").attr("y", 22).attr("text-anchor", "middle").style("fill", "#2c3e50").style("font-size", "12px").text(d.children ? "-" : "+");
         }
@@ -214,13 +240,11 @@ function renderTree(source) {
 function expandSpouseAncestry(spouseId, nodeInTree) {
     const parentLink = lineageData.find(l => l.child === spouseId);
     if (!parentLink) return;
-    const parentNode = root.children.find(c => c.data.id === parentLink.parent);
+    const parentNode = root.children.find(c => c.data.id === parentLink.parent || c.data.realId === parentLink.parent);
     if (parentNode) {
         parentNode.data.isSpouseParent = true;
-        // Grafting logic: Move parent to be visible
         if (parentNode._children) { parentNode.children = parentNode._children; parentNode._children = null; }
-        renderTree(parentNode); 
-        centerNode(parentNode);
+        renderTree(parentNode); centerNode(parentNode);
     }
 }
 
@@ -243,8 +267,10 @@ function renderDirectory(f = "") {
 }
 
 function showCard(d) {
-    document.getElementById('m-name').innerText = d.name;
-    document.getElementById('m-details').innerHTML = `<b>ID:</b> <span>${d.id}</span> <button class="copy-btn" onclick="copyId('${d.id}')">Copy</button><br><b>Gender:</b> ${d.gender}<br><b>Age:</b> ${d.age || 'N/A'}<br><b>Loc:</b> ${d.location || 'N/A'}`;
+    const realId = d.realId || d.id;
+    const member = allMembers.find(m => m.id === realId);
+    document.getElementById('m-name').innerText = member.name;
+    document.getElementById('m-details').innerHTML = `<b>ID:</b> <span>${member.id}</span> <button class="copy-btn" onclick="copyId('${member.id}')">Copy</button><br><b>Gender:</b> ${member.gender}<br><b>Age:</b> ${member.age || 'N/A'}<br><b>Loc:</b> ${member.location || 'N/A'}`;
     document.getElementById('modal').style.display = 'flex';
 }
 function copyId(id) { navigator.clipboard.writeText(id).then(() => { alert("Copied ID: " + id); }); }
