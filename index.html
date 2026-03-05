@@ -6,7 +6,15 @@
     <title>Symmetry Family App</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        :root { --primary: #2c3e50; --accent: #1abc9c; --bg: #f4f7f6; --male: #3498db; --female: #e91e63; }
+        :root { 
+            --primary: #2c3e50; 
+            --accent: #1abc9c; 
+            --bg: #f4f7f6; 
+            --male: #3498db; 
+            --female: #e91e63; 
+            --male-dead: #85c1e9;   /* Faded Blue */
+            --female-dead: #f1948a; /* Faded Red/Pink */
+        }
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
         .phone-frame { width: 100%; height: 100%; background: var(--bg); position: relative; display: flex; flex-direction: column; }
         .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
@@ -81,7 +89,6 @@
 const boxW = 110, boxH = 35, canvasWidth = 10000, canvasHeight = 5000;
 let svg, g, gUnmapped, root, unmappedRoot, allMembers = [], mDataMap = new Map(), lineageData = [], marriageData = [];
 
-// Global animation lock to prevent bugging out the view on spam clicks
 window.isAnimating = false;
 
 const formLinks = {
@@ -259,12 +266,33 @@ function renderTree(sourceRoot, container) {
 
 function drawBox(container, d, o) {
     if (!d) return;
+    
+    // Check if the member's location is "NA" or "N/A"
+    const loc = (d.location || '').trim().toUpperCase();
+    const isDead = (loc === 'NA' || loc === 'N/A');
+    
+    // Assign proper CSS variable
+    let fillColor;
+    if (d.gender === 'M') {
+        fillColor = isDead ? 'var(--male-dead)' : 'var(--male)';
+    } else {
+        fillColor = isDead ? 'var(--female-dead)' : 'var(--female)';
+    }
+
     const b = container.append("g").on("click", (e) => { e.stopPropagation(); showCard(d); });
-    b.append("rect").attr("id", `rect-${d.id}`).attr("class", "member-rect").attr("x", o - boxW/2).attr("y", -boxH/2).attr("width", boxW).attr("height", boxH).attr("fill", d.gender === 'M' ? 'var(--male)' : 'var(--female)').attr("rx", 3);
-    b.append("text").attr("class", "node-text").attr("x", o).attr("y", 5).text(d.name);
+    b.append("rect")
+        .attr("id", `rect-${d.id}`)
+        .attr("class", "member-rect")
+        .attr("x", o - boxW/2).attr("y", -boxH/2)
+        .attr("width", boxW).attr("height", boxH)
+        .attr("fill", fillColor)
+        .attr("rx", 3);
+    b.append("text")
+        .attr("class", "node-text")
+        .attr("x", o).attr("y", 5)
+        .text(d.name);
 }
 
-// FIXED: Prioritize finding Primary Nodes first
 function findPrimaryNode(node, id) {
     if (node.data.id === id || node.data.realId === id) return node;
     let kids = node.children || node._children;
@@ -277,7 +305,6 @@ function findPrimaryNode(node, id) {
     return null;
 }
 
-// Fallback if they only exist as a spouse
 function findSpouseFallback(node, id) {
     if (node.data.marriages && node.data.marriages.some(m => m.spouse && m.spouse.id === id)) return node;
     let kids = node.children || node._children;
@@ -291,33 +318,29 @@ function findSpouseFallback(node, id) {
 }
 
 function animatedJump(target, isUnmapped, id) {
-    window.isAnimating = true; // Lock animation
+    window.isAnimating = true;
 
     const paneId = isUnmapped ? 'pane-unmapped' : 'pane';
     const p = document.getElementById(paneId);
     const activeG = isUnmapped ? gUnmapped : g;
 
-    // 1. Zoom Out
     activeG.transition().duration(600).attr("transform", `translate(${canvasWidth/2}, 150) scale(0.4)`);
     
     setTimeout(() => {
-        // 2. Pan to coordinate
         const scaledX = canvasWidth/2 + target.x * 0.4;
         const scaledY = 150 + target.y * 0.4;
         p.scrollTo({ left: scaledX - p.clientWidth/2, top: scaledY - p.clientHeight/2, behavior: 'smooth' });
 
         setTimeout(() => {
-            // 3. Zoom In
             activeG.transition().duration(600).attr("transform", `translate(${canvasWidth/2}, 150) scale(1)`);
             p.scrollTo({ left: target.x + (canvasWidth/2) - (p.clientWidth/2), top: target.y + 150 - (p.clientHeight/2), behavior: 'auto' });
 
-            // 4. Highlight target & Release Lock
             setTimeout(() => {
                 d3.selectAll('.member-rect').style('stroke', '#fff').style('stroke-width', '1px');
                 d3.select(`#rect-${id}`).transition().duration(200).style('stroke', '#f1c40f').style('stroke-width', '4px')
                   .transition().duration(2000).style('stroke', '#fff').style('stroke-width', '1px');
                 
-                window.isAnimating = false; // Release lock
+                window.isAnimating = false;
             }, 600);
 
         }, 600); 
@@ -335,7 +358,6 @@ function jumpToTree(id) {
         isUnmapped = true;
     }
     
-    // Fallback to Spouse search if not a primary node
     if (!target) {
         target = findSpouseFallback(root, id);
         isUnmapped = false;
@@ -388,8 +410,10 @@ function renderDirectory(f = "") {
 }
 
 function showCard(d) {
+    const loc = (d.location || '').trim().toUpperCase();
+    const displayLoc = (loc === 'NA' || loc === 'N/A') ? 'Deceased (NA)' : (d.location || 'N/A');
     document.getElementById('m-name').innerText = d.name;
-    document.getElementById('m-details').innerHTML = `<b>ID:</b> ${d.id}<br><b>Gender:</b> ${d.gender}<br><b>Loc:</b> ${d.location || 'N/A'}`;
+    document.getElementById('m-details').innerHTML = `<b>ID:</b> ${d.id}<br><b>Gender:</b> ${d.gender}<br><b>Loc:</b> ${displayLoc}`;
     document.getElementById('modal').style.display = 'flex';
 }
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
