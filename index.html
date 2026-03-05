@@ -6,15 +6,7 @@
     <title>Symmetry Family App</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        :root { 
-            --primary: #2c3e50; 
-            --accent: #1abc9c; 
-            --bg: #f4f7f6; 
-            --male: #3498db; 
-            --female: #e91e63; 
-            --male-dead: #85c1e9;   /* Faded Blue */
-            --female-dead: #f1948a; /* Faded Red/Pink */
-        }
+        :root { --primary: #2c3e50; --accent: #1abc9c; --bg: #f4f7f6; --male: #3498db; --female: #e91e63; --male-dead: #85c1e9; --female-dead: #f1948a; }
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
         .phone-frame { width: 100%; height: 100%; background: var(--bg); position: relative; display: flex; flex-direction: column; }
         .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
@@ -66,21 +58,21 @@
 
 <div class="phone-frame">
     <header class="app-header">
-        <div style="font-weight:bold; font-size: 16px;" id="header-title">Tree</div>
+        <div style="font-weight:bold; font-size: 16px;" id="header-title">My Family Tree</div>
         <button onclick="location.reload()" style="background:none; border: 1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:10px;">Reset</button>
     </header>
     <div class="view-area" id="pane"><div id="canvas"></div></div>
     <div class="view-area" id="pane-unmapped" style="display:none;"><div id="canvas-unmapped"></div></div>
     <div id="directory-view">
         <div class="directory-header">
-            <input type="text" id="dirSearch" class="search-box" placeholder="Search relatives..." onkeyup="renderDirectory(this.value)">
+            <input type="text" id="dirSearch" class="search-box" placeholder="Search relatives or locations..." onkeyup="renderDirectory(this.value)">
         </div>
         <div id="member-list"></div>
     </div>
     <div class="fab" id="fab-button" onclick="centerNodes()">🏠</div>
     <div class="bottom-nav">
-        <div class="nav-item active" id="tab-tree" onclick="switchTab('tree')"><span>🌳</span>Tree</div>
-        <div class="nav-item" id="tab-unmapped" onclick="switchTab('unmapped')"><span>🗺️</span>Unmapped</div>
+        <div class="nav-item active" id="tab-tree" onclick="switchTab('tree')"><span>🌳</span>My Family Tree</div>
+        <div class="nav-item" id="tab-unmapped" onclick="switchTab('unmapped')"><span>🗺️</span>Other Families</div>
         <div class="nav-item" id="tab-members" onclick="switchTab('members')"><span>👥</span>Members</div>
     </div>
 </div>
@@ -104,11 +96,11 @@ function switchTab(tab) {
     if (tab === 'tree') {
         document.getElementById('pane').style.display = 'block';
         document.getElementById('tab-tree').classList.add('active');
-        document.getElementById('header-title').innerText = "Tree";
+        document.getElementById('header-title').innerText = "My Family Tree";
     } else if (tab === 'unmapped') {
         document.getElementById('pane-unmapped').style.display = 'block';
         document.getElementById('tab-unmapped').classList.add('active');
-        document.getElementById('header-title').innerText = "Unmapped";
+        document.getElementById('header-title').innerText = "Other Families";
     } else {
         document.getElementById('directory-view').style.display = 'block';
         document.getElementById('tab-members').classList.add('active');
@@ -176,7 +168,36 @@ async function init() {
         root = d3.hierarchy(universeGhost);
         root.descendants().forEach(d => { if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } });
 
-        const unmappedRoots = members.filter(m => !mappedIds.has(m.id) && !lineageData.some(l => l.child === m.id));
+        // DEDUPLICATION LOGIC FOR UNMAPPED TAB
+        const processedUnmappedPairs = new Set();
+        const unmappedRoots = [];
+
+        members.forEach(m => {
+            // If they aren't mapped in the main tree AND don't have parents
+            if (!mappedIds.has(m.id) && !lineageData.some(l => l.child === m.id)) {
+                const marriages = marriageData.filter(mar => mar.parent === m.id || mar.child === m.id);
+                let isDuplicatePair = false;
+
+                // Check if we've already set their spouse as a root
+                marriages.forEach(mar => {
+                    const spouseId = mar.parent === m.id ? mar.child : mar.parent;
+                    const pairKey = [m.id, spouseId].sort().join('-');
+                    if (processedUnmappedPairs.has(pairKey)) {
+                        isDuplicatePair = true;
+                    }
+                });
+
+                if (!isDuplicatePair) {
+                    unmappedRoots.push(m);
+                    // Register this pair so we don't render the spouse as a separate root
+                    marriages.forEach(mar => {
+                        const spouseId = mar.parent === m.id ? mar.child : mar.parent;
+                        processedUnmappedPairs.add([m.id, spouseId].sort().join('-'));
+                    });
+                }
+            }
+        });
+
         unmappedRoot = d3.hierarchy({ id: "GHOST", children: unmappedRoots.map(r => build(r.id)).filter(x => x) });
         unmappedRoot.descendants().forEach(d => { if(d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
 
@@ -267,11 +288,9 @@ function renderTree(sourceRoot, container) {
 function drawBox(container, d, o) {
     if (!d) return;
     
-    // Check if the member's location is "NA" or "N/A"
     const loc = (d.location || '').trim().toUpperCase();
     const isDead = (loc === 'NA' || loc === 'N/A');
     
-    // Assign proper CSS variable
     let fillColor;
     if (d.gender === 'M') {
         fillColor = isDead ? 'var(--male-dead)' : 'var(--male)';
@@ -396,12 +415,18 @@ function centerNodes() { const p = document.getElementById('pane'); p.scrollTo({
 
 function renderDirectory(f = "") {
     const l = document.getElementById('member-list'); l.innerHTML = "";
-    const filtered = allMembers.filter(m => (m.name||"").toLowerCase().includes(f.toLowerCase()));
+    
+    // UPDATED SEARCH LOGIC: Filter by Name OR Location
+    const filtered = allMembers.filter(m => 
+        (m.name||"").toLowerCase().includes(f.toLowerCase()) || 
+        (m.location||"").toLowerCase().includes(f.toLowerCase())
+    );
+
     filtered.sort((a,b)=>a.name.localeCompare(b.name)).forEach(m => {
         const d = document.createElement('div'); d.className = 'member-item';
         d.innerHTML = `
             <div style="flex-grow: 1;" onclick="showCard({id:'${m.id}', name:'${m.name}', gender:'${m.gender}', location:'${m.location||''}'})">
-                <b>${m.name}</b><br><small>ID: ${m.id}</small>
+                <b>${m.name}</b><br><small>ID: ${m.id} | Loc: ${m.location || 'N/A'}</small>
             </div>
             <div class="jump-btn" onclick="event.stopPropagation(); jumpToTree('${m.id}')" title="Show in Tree">❯</div>
         `;
