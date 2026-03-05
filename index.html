@@ -81,6 +81,9 @@
 const boxW = 110, boxH = 35, canvasWidth = 10000, canvasHeight = 5000;
 let svg, g, gUnmapped, root, unmappedRoot, allMembers = [], mDataMap = new Map(), lineageData = [], marriageData = [];
 
+// Global animation lock to prevent bugging out the view on spam clicks
+window.isAnimating = false;
+
 const formLinks = {
     details: "https://docs.google.com/forms/d/e/1FAIpQLSeskFqcch7l1KlrrR0kRyJBMZza-7WyKgHQhDoiqxcEBWxSvQ/viewform?embedded=true",
     newMember: "https://docs.google.com/forms/d/e/1FAIpQLSdmgTda1cVu_dkElZt_XWGcaMPV681wImIDjx5LH4z1dH6p-A/viewform?embedded=true"
@@ -90,6 +93,7 @@ function switchTab(tab) {
     const panes = ['pane', 'pane-unmapped', 'directory-view'];
     panes.forEach(p => document.getElementById(p).style.display = 'none');
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    
     if (tab === 'tree') {
         document.getElementById('pane').style.display = 'block';
         document.getElementById('tab-tree').classList.add('active');
@@ -228,8 +232,6 @@ function renderTree(sourceRoot, container) {
                 const sG = el.append("g").attr("transform", `translate(${xPos}, 0)`);
                 drawBox(sG, m.spouse, 0);
 
-                // CROSS-FAMILY NAVIGATION (# ICON)
-                // If this spouse exists in lineageData as a child, they have a Primary Node elsewhere
                 if (lineageData.some(l => l.child === m.spouse.id)) {
                     const hash = sG.append("g")
                         .attr("transform", `translate(${boxW/2 + 8}, -12)`)
@@ -262,14 +264,26 @@ function drawBox(container, d, o) {
     b.append("text").attr("class", "node-text").attr("x", o).attr("y", 5).text(d.name);
 }
 
-// SEARCH AND ANIMATED JUMP LOGIC
-function searchTreeAny(node, id) {
-    if (node.data.id === id || node.data.realId === id) return { node: node, type: 'primary' };
-    if (node.data.marriages && node.data.marriages.some(m => m.spouse && m.spouse.id === id)) return { node: node, type: 'spouse' };
+// FIXED: Prioritize finding Primary Nodes first
+function findPrimaryNode(node, id) {
+    if (node.data.id === id || node.data.realId === id) return node;
     let kids = node.children || node._children;
     if (kids) {
         for (let i = 0; i < kids.length; i++) {
-            let res = searchTreeAny(kids[i], id);
+            let res = findPrimaryNode(kids[i], id);
+            if (res) return res;
+        }
+    }
+    return null;
+}
+
+// Fallback if they only exist as a spouse
+function findSpouseFallback(node, id) {
+    if (node.data.marriages && node.data.marriages.some(m => m.spouse && m.spouse.id === id)) return node;
+    let kids = node.children || node._children;
+    if (kids) {
+        for (let i = 0; i < kids.length; i++) {
+            let res = findSpouseFallback(kids[i], id);
             if (res) return res;
         }
     }
@@ -277,6 +291,8 @@ function searchTreeAny(node, id) {
 }
 
 function animatedJump(target, isUnmapped, id) {
+    window.isAnimating = true; // Lock animation
+
     const paneId = isUnmapped ? 'pane-unmapped' : 'pane';
     const p = document.getElementById(paneId);
     const activeG = isUnmapped ? gUnmapped : g;
@@ -295,34 +311,45 @@ function animatedJump(target, isUnmapped, id) {
             activeG.transition().duration(600).attr("transform", `translate(${canvasWidth/2}, 150) scale(1)`);
             p.scrollTo({ left: target.x + (canvasWidth/2) - (p.clientWidth/2), top: target.y + 150 - (p.clientHeight/2), behavior: 'auto' });
 
-            // 4. Highlight target
+            // 4. Highlight target & Release Lock
             setTimeout(() => {
                 d3.selectAll('.member-rect').style('stroke', '#fff').style('stroke-width', '1px');
                 d3.select(`#rect-${id}`).transition().duration(200).style('stroke', '#f1c40f').style('stroke-width', '4px')
                   .transition().duration(2000).style('stroke', '#fff').style('stroke-width', '1px');
+                
+                window.isAnimating = false; // Release lock
             }, 600);
 
-        }, 600); // wait for pan
-    }, 600); // wait for zoom out
+        }, 600); 
+    }, 600); 
 }
 
 function jumpToTree(id) {
-    let result = searchTreeAny(root, id);
+    if (window.isAnimating) return;
+
+    let target = findPrimaryNode(root, id);
     let isUnmapped = false;
     
-    if (!result) {
-        result = searchTreeAny(unmappedRoot, id);
+    if (!target) {
+        target = findPrimaryNode(unmappedRoot, id);
         isUnmapped = true;
     }
     
-    if (!result) return alert("Member not found in tree view.");
+    // Fallback to Spouse search if not a primary node
+    if (!target) {
+        target = findSpouseFallback(root, id);
+        isUnmapped = false;
+        if (!target) {
+            target = findSpouseFallback(unmappedRoot, id);
+            isUnmapped = true;
+        }
+        if (!target) return alert("Member not found in tree view.");
+    }
 
-    const target = result.node;
     switchTab(isUnmapped ? 'unmapped' : 'tree');
     const activeRoot = isUnmapped ? unmappedRoot : root;
     const activeG = isUnmapped ? gUnmapped : g;
 
-    // Collapse everything
     function collapseAll(n) {
         let kids = n.children || n._children;
         if (kids) {
@@ -333,7 +360,6 @@ function jumpToTree(id) {
     }
     collapseAll(activeRoot);
 
-    // Expand path to target
     let curr = target.parent;
     while(curr) {
         if (curr._children) { curr.children = curr._children; curr._children = null; }
@@ -341,8 +367,6 @@ function jumpToTree(id) {
     }
 
     renderTree(activeRoot, activeG);
-    
-    // Trigger the cinematic jump
     animatedJump(target, isUnmapped, id);
 }
 
