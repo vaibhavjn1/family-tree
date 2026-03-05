@@ -14,8 +14,6 @@
         #canvas, #canvas-unmapped { min-width: 10000px; min-height: 5000px; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 50px 50px; }
         
         .link { fill: none; stroke: #cbd5e0; stroke-width: 2.5px; opacity: 1; }
-        .spouse-parent-link { fill: none; stroke: #e67e22; stroke-width: 3px; stroke-dasharray: 6,4; opacity: 0.8; }
-        
         .node-container { cursor: pointer; }
         .member-rect { stroke: #fff; stroke-width: 1px; }
         .node-text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
@@ -68,7 +66,6 @@
     <div id="directory-view">
         <div class="directory-header">
             <input type="text" id="dirSearch" class="search-box" placeholder="Search relatives..." onkeyup="renderDirectory(this.value)">
-            <span id="dirCount" style="font-size:11px; color:var(--accent); font-weight:bold; margin-top:5px; display:none;"></span>
         </div>
         <div id="member-list"></div>
     </div>
@@ -181,18 +178,15 @@ async function init() {
         renderTree(root, g);
         renderTree(unmappedRoot, gUnmapped);
         
-        // Center the trees on load
         setTimeout(centerNodes, 100);
     } catch (err) { console.error(err); }
 }
 
 function renderTree(sourceRoot, container) {
-    // Dynamic Node Spacing logic for closer mobile rendering
     const treeLayout = d3.tree().nodeSize([200, 240])
         .separation((a, b) => {
             const aSpouses = a.data.marriages ? a.data.marriages.length : 0;
             const bSpouses = b.data.marriages ? b.data.marriages.length : 0;
-            // Base separation is tighter. Widens dynamically if multiple spouses exist.
             return (a.parent === b.parent ? 1.0 : 1.1) + (aSpouses * 0.4) + (bSpouses * 0.4);
         });
         
@@ -231,7 +225,22 @@ function renderTree(sourceRoot, container) {
         if (data.marriages) {
             data.marriages.forEach((m, i) => {
                 const xPos = (i + 1) * (boxW + 10);
-                drawBox(el.append("g").attr("transform", `translate(${xPos}, 0)`), m.spouse, 0);
+                const sG = el.append("g").attr("transform", `translate(${xPos}, 0)`);
+                drawBox(sG, m.spouse, 0);
+
+                // CROSS-FAMILY NAVIGATION (# ICON)
+                // If this spouse exists in lineageData as a child, they have a Primary Node elsewhere
+                if (lineageData.some(l => l.child === m.spouse.id)) {
+                    const hash = sG.append("g")
+                        .attr("transform", `translate(${boxW/2 + 8}, -12)`)
+                        .style("cursor", "pointer")
+                        .on("click", (e) => { 
+                            e.stopPropagation(); 
+                            jumpToTree(m.spouse.id); 
+                        });
+                    hash.append("circle").attr("r", 9).attr("fill", "#e67e22").attr("stroke", "#fff").attr("stroke-width", "1.5px");
+                    hash.append("text").attr("y", 3).attr("text-anchor", "middle").style("fill", "#fff").style("font-size", "10px").style("font-weight", "bold").text("#");
+                }
             });
         }
         
@@ -253,34 +262,67 @@ function drawBox(container, d, o) {
     b.append("text").attr("class", "node-text").attr("x", o).attr("y", 5).text(d.name);
 }
 
-function searchTree(node, id) {
-    if (node.data.id === id) return node;
-    if (node.data.marriages && node.data.marriages.some(m => m.spouse && m.spouse.id === id)) return node;
+// SEARCH AND ANIMATED JUMP LOGIC
+function searchTreeAny(node, id) {
+    if (node.data.id === id || node.data.realId === id) return { node: node, type: 'primary' };
+    if (node.data.marriages && node.data.marriages.some(m => m.spouse && m.spouse.id === id)) return { node: node, type: 'spouse' };
     let kids = node.children || node._children;
     if (kids) {
         for (let i = 0; i < kids.length; i++) {
-            let res = searchTree(kids[i], id);
+            let res = searchTreeAny(kids[i], id);
             if (res) return res;
         }
     }
     return null;
 }
 
+function animatedJump(target, isUnmapped, id) {
+    const paneId = isUnmapped ? 'pane-unmapped' : 'pane';
+    const p = document.getElementById(paneId);
+    const activeG = isUnmapped ? gUnmapped : g;
+
+    // 1. Zoom Out
+    activeG.transition().duration(600).attr("transform", `translate(${canvasWidth/2}, 150) scale(0.4)`);
+    
+    setTimeout(() => {
+        // 2. Pan to coordinate
+        const scaledX = canvasWidth/2 + target.x * 0.4;
+        const scaledY = 150 + target.y * 0.4;
+        p.scrollTo({ left: scaledX - p.clientWidth/2, top: scaledY - p.clientHeight/2, behavior: 'smooth' });
+
+        setTimeout(() => {
+            // 3. Zoom In
+            activeG.transition().duration(600).attr("transform", `translate(${canvasWidth/2}, 150) scale(1)`);
+            p.scrollTo({ left: target.x + (canvasWidth/2) - (p.clientWidth/2), top: target.y + 150 - (p.clientHeight/2), behavior: 'auto' });
+
+            // 4. Highlight target
+            setTimeout(() => {
+                d3.selectAll('.member-rect').style('stroke', '#fff').style('stroke-width', '1px');
+                d3.select(`#rect-${id}`).transition().duration(200).style('stroke', '#f1c40f').style('stroke-width', '4px')
+                  .transition().duration(2000).style('stroke', '#fff').style('stroke-width', '1px');
+            }, 600);
+
+        }, 600); // wait for pan
+    }, 600); // wait for zoom out
+}
+
 function jumpToTree(id) {
-    let target = searchTree(root, id);
+    let result = searchTreeAny(root, id);
     let isUnmapped = false;
     
-    if (!target) {
-        target = searchTree(unmappedRoot, id);
+    if (!result) {
+        result = searchTreeAny(unmappedRoot, id);
         isUnmapped = true;
     }
     
-    if (!target) return alert("Member not found in tree view.");
+    if (!result) return alert("Member not found in tree view.");
 
+    const target = result.node;
     switchTab(isUnmapped ? 'unmapped' : 'tree');
     const activeRoot = isUnmapped ? unmappedRoot : root;
     const activeG = isUnmapped ? gUnmapped : g;
 
+    // Collapse everything
     function collapseAll(n) {
         let kids = n.children || n._children;
         if (kids) {
@@ -291,6 +333,7 @@ function jumpToTree(id) {
     }
     collapseAll(activeRoot);
 
+    // Expand path to target
     let curr = target.parent;
     while(curr) {
         if (curr._children) { curr.children = curr._children; curr._children = null; }
@@ -299,26 +342,8 @@ function jumpToTree(id) {
 
     renderTree(activeRoot, activeG);
     
-    setTimeout(() => {
-        const paneId = isUnmapped ? 'pane-unmapped' : 'pane';
-        const p = document.getElementById(paneId);
-        p.scrollTo({ 
-            left: target.x + (canvasWidth/2) - (p.clientWidth/2), 
-            top: target.y + 150 - (p.clientHeight/2), 
-            behavior: 'smooth' 
-        });
-        
-        d3.selectAll('.member-rect').transition().duration(200).style('stroke', '#fff').style('stroke-width', '1px');
-        d3.select(`#rect-${id}`).transition().duration(200).style('stroke', '#f1c40f').style('stroke-width', '4px');
-        setTimeout(() => { d3.select(`#rect-${id}`).transition().duration(500).style('stroke', '#fff').style('stroke-width', '1px'); }, 3000);
-        
-    }, 150);
-}
-
-function graftSpouseFamily(spouseId) {
-    const parentLink = lineageData.find(l => l.child === spouseId);
-    if (!parentLink) return;
-    jumpToTree(parentLink.parent);
+    // Trigger the cinematic jump
+    animatedJump(target, isUnmapped, id);
 }
 
 function centerNodes() { const p = document.getElementById('pane'); p.scrollTo({ left: (canvasWidth/2) - (p.clientWidth/2), top: 0, behavior: 'smooth' }); }
