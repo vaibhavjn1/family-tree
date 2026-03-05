@@ -12,14 +12,15 @@
         .app-header { height: 60px; background: var(--primary); color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .view-area { flex-grow: 1; overflow: auto; position: relative; -webkit-overflow-scrolling: touch; background: #e5e7eb; }
         #canvas, #canvas-unmapped { min-width: 10000px; min-height: 5000px; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 50px 50px; }
+        
         .link { fill: none; stroke: #cbd5e0; stroke-width: 2.5px; opacity: 1; }
+        .spouse-parent-link { fill: none; stroke: #e67e22; stroke-width: 3px; stroke-dasharray: 6,4; opacity: 0.8; }
+        
         .node-container { cursor: pointer; }
         .member-rect { stroke: #fff; stroke-width: 1px; }
         .node-text { fill: white; font-weight: bold; font-size: 11px; text-anchor: middle; pointer-events: none; }
         .marriage-group-bg { fill: rgba(248,252,252,0.9); stroke: #94a3b8; stroke-dasharray: 4; stroke-width: 1px; }
-        #minimap { position: fixed; bottom: 95px; left: 20px; width: 140px; height: 140px; background: rgba(255, 255, 255, 0.95); border: 2px solid var(--primary); border-radius: 8px; z-index: 1000; overflow: hidden; cursor: crosshair; }
-        #minimap-viewport { position: absolute; border: 2px solid var(--accent); background: rgba(26, 188, 156, 0.2); pointer-events: none; }
-        .minimap-dot { position: absolute; width: 3px; height: 3px; border-radius: 50%; pointer-events: none; }
+        
         #directory-view { flex-grow: 1; overflow-y: auto; background: white; display: none; padding-bottom: 80px; }
         .directory-header { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 1px solid #eee; z-index: 10; }
         .search-box { width: 100%; padding: 10px 15px; border-radius: 25px; border: 1px solid #ddd; outline: none; font-size: 14px; box-sizing: border-box; }
@@ -28,6 +29,7 @@
         .nav-item.active { color: var(--accent); font-weight: bold; }
         .nav-item span { font-size: 20px; display: block; margin-bottom: 2px; }
         .fab { position: fixed; right: 20px; bottom: 95px; width: 50px; height: 50px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 20; cursor: pointer; }
+        
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 2000; justify-content: center; align-items: center; }
         .member-card { background: white; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; position: relative; }
         .member-item { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; align-items: center; cursor: pointer; }
@@ -66,10 +68,10 @@
     <div id="directory-view">
         <div class="directory-header">
             <input type="text" id="dirSearch" class="search-box" placeholder="Search relatives..." onkeyup="renderDirectory(this.value)">
+            <span id="dirCount" style="font-size:11px; color:var(--accent); font-weight:bold; margin-top:5px; display:none;"></span>
         </div>
         <div id="member-list"></div>
     </div>
-    <div id="minimap" onclick="minimapJump(event)"><div id="minimap-viewport"></div></div>
     <div class="fab" id="fab-button" onclick="centerNodes()">🏠</div>
     <div class="bottom-nav">
         <div class="nav-item active" id="tab-tree" onclick="switchTab('tree')"><span>🌳</span>Tree</div>
@@ -94,18 +96,14 @@ function switchTab(tab) {
     if (tab === 'tree') {
         document.getElementById('pane').style.display = 'block';
         document.getElementById('tab-tree').classList.add('active');
-        document.getElementById('minimap').style.display = 'block';
         document.getElementById('header-title').innerText = "Tree";
-        updateMinimap();
     } else if (tab === 'unmapped') {
         document.getElementById('pane-unmapped').style.display = 'block';
         document.getElementById('tab-unmapped').classList.add('active');
-        document.getElementById('minimap').style.display = 'none';
         document.getElementById('header-title').innerText = "Unmapped";
     } else {
         document.getElementById('directory-view').style.display = 'block';
         document.getElementById('tab-members').classList.add('active');
-        document.getElementById('minimap').style.display = 'none';
         document.getElementById('header-title').innerText = "Members";
         renderDirectory("");
     }
@@ -183,13 +181,21 @@ async function init() {
         renderTree(root, g);
         renderTree(unmappedRoot, gUnmapped);
         
-        setTimeout(centerNodes, 500);
-        document.getElementById('pane').addEventListener('scroll', updateMinimap);
+        // Center the trees on load
+        setTimeout(centerNodes, 100);
     } catch (err) { console.error(err); }
 }
 
 function renderTree(sourceRoot, container) {
-    const treeLayout = d3.tree().nodeSize([450, 240]);
+    // Dynamic Node Spacing logic for closer mobile rendering
+    const treeLayout = d3.tree().nodeSize([200, 240])
+        .separation((a, b) => {
+            const aSpouses = a.data.marriages ? a.data.marriages.length : 0;
+            const bSpouses = b.data.marriages ? b.data.marriages.length : 0;
+            // Base separation is tighter. Widens dynamically if multiple spouses exist.
+            return (a.parent === b.parent ? 1.0 : 1.1) + (aSpouses * 0.4) + (bSpouses * 0.4);
+        });
+        
     treeLayout(sourceRoot);
     const nodes = sourceRoot.descendants().filter(d => d.depth > 0);
     const links = sourceRoot.links().filter(d => d.source.depth > 0);
@@ -247,7 +253,6 @@ function drawBox(container, d, o) {
     b.append("text").attr("class", "node-text").attr("x", o).attr("y", 5).text(d.name);
 }
 
-// TREE SEARCH AND JUMP LOGIC
 function searchTree(node, id) {
     if (node.data.id === id) return node;
     if (node.data.marriages && node.data.marriages.some(m => m.spouse && m.spouse.id === id)) return node;
@@ -272,12 +277,10 @@ function jumpToTree(id) {
     
     if (!target) return alert("Member not found in tree view.");
 
-    // 1. Switch Tabs
     switchTab(isUnmapped ? 'unmapped' : 'tree');
     const activeRoot = isUnmapped ? unmappedRoot : root;
     const activeG = isUnmapped ? gUnmapped : g;
 
-    // 2. Collapse Everything
     function collapseAll(n) {
         let kids = n.children || n._children;
         if (kids) {
@@ -288,14 +291,12 @@ function jumpToTree(id) {
     }
     collapseAll(activeRoot);
 
-    // 3. Expand Path to Target
     let curr = target.parent;
     while(curr) {
         if (curr._children) { curr.children = curr._children; curr._children = null; }
         curr = curr.parent;
     }
 
-    // 4. Render and Scroll
     renderTree(activeRoot, activeG);
     
     setTimeout(() => {
@@ -307,12 +308,17 @@ function jumpToTree(id) {
             behavior: 'smooth' 
         });
         
-        // 5. Highlight the target node
         d3.selectAll('.member-rect').transition().duration(200).style('stroke', '#fff').style('stroke-width', '1px');
         d3.select(`#rect-${id}`).transition().duration(200).style('stroke', '#f1c40f').style('stroke-width', '4px');
         setTimeout(() => { d3.select(`#rect-${id}`).transition().duration(500).style('stroke', '#fff').style('stroke-width', '1px'); }, 3000);
         
-    }, 150); // wait for layout to calculate x,y
+    }, 150);
+}
+
+function graftSpouseFamily(spouseId) {
+    const parentLink = lineageData.find(l => l.child === spouseId);
+    if (!parentLink) return;
+    jumpToTree(parentLink.parent);
 }
 
 function centerNodes() { const p = document.getElementById('pane'); p.scrollTo({ left: (canvasWidth/2) - (p.clientWidth/2), top: 0, behavior: 'smooth' }); }
@@ -340,17 +346,7 @@ function showCard(d) {
 function closeCard() { document.getElementById('modal').style.display = 'none'; }
 function openForm(type) { document.getElementById('form-iframe').src = formLinks[type]; document.getElementById('form-modal').style.display = 'flex'; }
 function closeForm() { document.getElementById('form-modal').style.display = 'none'; setTimeout(() => alert("Thanks for filling details..."), 300); }
-function updateMinimap() {
-    const pane = document.getElementById('pane'), viewport = document.getElementById('minimap-viewport');
-    const s = 140 / canvasWidth;
-    viewport.style.width = (pane.clientWidth * s) + "px"; viewport.style.height = (pane.clientHeight * s) + "px";
-    viewport.style.left = (pane.scrollLeft * s) + "px"; viewport.style.top = (pane.scrollTop * s) + "px";
-}
-function minimapJump(e) {
-    const pane = document.getElementById('pane'), rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left, y = e.clientY - rect.top;
-    pane.scrollTo({ left: (x * (canvasWidth / 140)) - (pane.clientWidth / 2), top: (y * (canvasHeight / 140)) - (pane.clientHeight / 2), behavior: 'smooth' });
-}
+
 window.onload = init;
 </script>
 </body>
