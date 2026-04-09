@@ -121,8 +121,21 @@ async function init() {
         marriageData = links.filter(l => l.type === 'marriage');
         members.forEach(d => mDataMap.set(d.id, d));
 
-        // Shared build logic
-        function build(id, visited) {
+        const mappedIds = new Set(['DH', 'NP']);
+        let changed = true;
+        while (changed) {
+            changed = false;
+            lineageData.forEach(l => {
+                if (mappedIds.has(l.parent) && !mappedIds.has(l.child)) { mappedIds.add(l.child); changed = true; }
+            });
+            marriageData.forEach(m => {
+                if (mappedIds.has(m.parent) && !mappedIds.has(m.child)) { mappedIds.add(m.child); changed = true; }
+                if (mappedIds.has(m.child) && !mappedIds.has(m.parent)) { mappedIds.add(m.parent); changed = true; }
+            });
+        }
+
+        // FIXED BUILD LOGIC: Do not mark spouses as globally visited, allowing them to exist as primary nodes in their birth family.
+        function build(id, visited = new Set()) {
             const u = mDataMap.get(id);
             if (!u || visited.has(id)) return null;
             visited.add(id);
@@ -131,10 +144,6 @@ async function init() {
             const marriageDetails = marriages.map(mar => {
                 const spouseId = mar.parent === id ? mar.child : mar.parent;
                 const spouse = mDataMap.get(spouseId);
-                
-                // CRITICAL FIX: Add spouse to visited set to prevent duplicate root rendering
-                if (spouseId) visited.add(spouseId);
-
                 const k = mar.parent + '+' + mar.child, alt = mar.child + '+' + mar.parent;
                 const children = lineageData.filter(r => r.parent === k || r.parent === alt)
                     .map(r => build(r.child, visited)).filter(x => x);
@@ -156,30 +165,35 @@ async function init() {
             };
         }
 
-        // 1. DYNAMICALLY BUILD PRIMARY TREE
         const primaryVisited = new Set();
-        const dhNode = build('DH', primaryVisited);
-        const npNode = build('NP', primaryVisited);
-
-        const universeGhost = { id: "UNIVERSE", name: "Universe", children: [dhNode, npNode].filter(x => x) };
+        const universeGhost = { id: "UNIVERSE", name: "Universe", children: [build('DH', primaryVisited), build('NP', primaryVisited)].filter(x => x) };
         root = d3.hierarchy(universeGhost);
         root.descendants().forEach(d => { if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } });
 
-        // 2. DEDUPLICATED UNMAPPED TREE
-        const unmappedVisited = new Set();
+        const processedUnmappedPairs = new Set();
         const unmappedRootsData = [];
-        
-        // Filter out anyone who was drawn in the primary tree or who has parents
-        const potentialRoots = members.filter(m => 
-            !primaryVisited.has(m.id) && 
-            !lineageData.some(l => l.child === m.id)
-        );
+        const unmappedVisited = new Set();
 
-        potentialRoots.forEach(m => {
-            // If they haven't been swept up as a spouse in a previous unmapped root
-            if (!unmappedVisited.has(m.id)) {
-                const treeNode = build(m.id, unmappedVisited);
-                if (treeNode) unmappedRootsData.push(treeNode);
+        members.forEach(m => {
+            if (!mappedIds.has(m.id) && !lineageData.some(l => l.child === m.id)) {
+                const marriages = marriageData.filter(mar => mar.parent === m.id || mar.child === m.id);
+                let isDuplicatePair = false;
+
+                marriages.forEach(mar => {
+                    const spouseId = mar.parent === m.id ? mar.child : mar.parent;
+                    const pairKey = [m.id, spouseId].sort().join('-');
+                    if (processedUnmappedPairs.has(pairKey)) isDuplicatePair = true;
+                });
+
+                if (!isDuplicatePair) {
+                    const treeNode = build(m.id, unmappedVisited);
+                    if (treeNode) unmappedRootsData.push(treeNode);
+                    
+                    marriages.forEach(mar => {
+                        const spouseId = mar.parent === m.id ? mar.child : mar.parent;
+                        processedUnmappedPairs.add([m.id, spouseId].sort().join('-'));
+                    });
+                }
             }
         });
 
@@ -245,6 +259,7 @@ function renderTree(sourceRoot, container) {
                 const sG = el.append("g").attr("transform", `translate(${xPos}, 0)`);
                 drawBox(sG, m.spouse, 0);
 
+                // Display jump icon if spouse is a child in any lineage
                 if (lineageData.some(l => l.child === m.spouse.id)) {
                     const hash = sG.append("g")
                         .attr("transform", `translate(${boxW/2 + 8}, -12)`)
@@ -270,6 +285,7 @@ function renderTree(sourceRoot, container) {
     node.merge(nE).transition().duration(500).attr("transform", d => `translate(${d.x},${d.y})`);
 }
 
+// FIXED: Uses data-id for robust highlight selection across multiple instances
 function drawBox(container, d, o) {
     if (!d) return;
     
@@ -285,7 +301,7 @@ function drawBox(container, d, o) {
 
     const b = container.append("g").on("click", (e) => { e.stopPropagation(); showCard(d); });
     b.append("rect")
-        .attr("id", `rect-${d.id}`)
+        .attr("data-id", d.id)
         .attr("class", "member-rect")
         .attr("x", o - boxW/2).attr("y", -boxH/2)
         .attr("width", boxW).attr("height", boxH)
@@ -298,7 +314,7 @@ function drawBox(container, d, o) {
 }
 
 function findPrimaryNode(node, id) {
-    if (node.data.id === id || node.data.realId === id) return node;
+    if (node.data.id === id) return node;
     let kids = node.children || node._children;
     if (kids) {
         for (let i = 0; i < kids.length; i++) {
@@ -340,8 +356,9 @@ function animatedJump(target, isUnmapped, id) {
             p.scrollTo({ left: target.x + (canvasWidth/2) - (p.clientWidth/2), top: target.y + 150 - (p.clientHeight/2), behavior: 'auto' });
 
             setTimeout(() => {
+                // FIXED: Use data-id selector to highlight all instances (Primary and Spouse) visible.
                 d3.selectAll('.member-rect').style('stroke', '#fff').style('stroke-width', '1px');
-                d3.select(`#rect-${id}`).transition().duration(200).style('stroke', '#f1c40f').style('stroke-width', '4px')
+                d3.selectAll(`rect[data-id='${id}']`).transition().duration(200).style('stroke', '#f1c40f').style('stroke-width', '4px')
                   .transition().duration(2000).style('stroke', '#fff').style('stroke-width', '1px');
                 
                 window.isAnimating = false;
@@ -400,8 +417,6 @@ function centerNodes() { const p = document.getElementById('pane'); p.scrollTo({
 
 function renderDirectory(f = "") {
     const l = document.getElementById('member-list'); l.innerHTML = "";
-    
-    // UPDATED SEARCH LOGIC: Filter by Name OR Location
     const filtered = allMembers.filter(m => 
         (m.name||"").toLowerCase().includes(f.toLowerCase()) || 
         (m.location||"").toLowerCase().includes(f.toLowerCase())
