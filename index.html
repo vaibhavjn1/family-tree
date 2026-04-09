@@ -144,7 +144,6 @@ async function init() {
                 const spouseId = mar.parent === id ? mar.child : mar.parent;
                 const spouse = mDataMap.get(spouseId);
                 
-                // CRITICAL FIX: Mark spouse as visited so they don't become a duplicate independent root
                 if (spouseId) visited.add(spouseId);
 
                 const k = mar.parent + '+' + mar.child, alt = mar.child + '+' + mar.parent;
@@ -174,7 +173,7 @@ async function init() {
         root = d3.hierarchy(universeGhost);
         root.descendants().forEach(d => { if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } });
 
-        // 2. OTHER FAMILIES (DEDUPLICATED & FILTERED)
+        // 2. OTHER FAMILIES (DEDUPLICATED)
         const unmappedVisited = new Set();
         const unmappedRootsData = [];
         
@@ -182,19 +181,26 @@ async function init() {
         const potentialRoots = members.filter(m => !mappedIds.has(m.id) && !lineageData.some(l => l.child === m.id));
 
         potentialRoots.forEach(m => {
+            // Only proceed if they haven't been visited (i.e. haven't been drawn as a spouse in a previous iteration)
             if (!unmappedVisited.has(m.id)) {
-                // Ensure they are not just an in-law (married to someone who HAS parents in this unmapped set)
+                
+                // Ensure they are not an in-law to someone who HAS parents
                 const marriages = marriageData.filter(mar => mar.parent === m.id || mar.child === m.id);
-                let isInLaw = false;
+                let isInLawToSomeoneWithParents = false;
+                
                 for (let mar of marriages) {
                     const spouseId = mar.parent === m.id ? mar.child : mar.parent;
-                    if (lineageData.some(l => l.child === spouseId)) { isInLaw = true; break; }
+                    if (lineageData.some(l => l.child === spouseId)) { 
+                        isInLawToSomeoneWithParents = true; 
+                        break; 
+                    }
                 }
 
-                if (!isInLaw) {
+                if (!isInLawToSomeoneWithParents) {
+                    // Build the tree. The `build` function will add the spouse to `unmappedVisited`,
+                    // ensuring we don't accidentally draw the spouse as a separate root in the next iteration of `potentialRoots`.
                     const treeNode = build(m.id, unmappedVisited);
-                    // DEDUPLICATION FIX: Only add them as a root if they actually form a parental family (have children)
-                    if (treeNode && treeNode._total > 0) {
+                    if (treeNode) {
                         unmappedRootsData.push(treeNode);
                     }
                 }
