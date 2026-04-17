@@ -153,7 +153,6 @@ async function init() {
 
                 const k = mar.parent + '+' + mar.child, alt = mar.child + '+' + mar.parent;
                 
-                // Cross-Parent Data Scan: Pulls in children linked to A, linked to B, or explicitly linked to A+B
                 const childIds = lineageData
                     .filter(r => r.parent === k || r.parent === alt || r.parent === spouseId || r.parent === id)
                     .map(r => r.child);
@@ -173,7 +172,6 @@ async function init() {
                 return { spouse, children: children.length ? children : null };
             });
 
-            // Catch any remaining solo children not assigned to a marriage
             const soloChildren = lineageData
                 .filter(r => r.parent === id && !globalAssignedChildren.has(r.child))
                 .map(r => build(r.child, currentPath))
@@ -184,7 +182,7 @@ async function init() {
 
             return { 
                 ...u, 
-                uid: u.id + '-' + Math.random().toString(36).substr(2, 9), // Ensures D3 renders multi-family identical children cleanly
+                uid: u.id + '-' + Math.random().toString(36).substr(2, 9),
                 marriages: marriageDetails, 
                 children: allChildren.length ? allChildren : null,
                 _direct: allChildren.length,
@@ -208,10 +206,7 @@ async function init() {
                 
                 for (let mar of marriages) {
                     const spouseId = mar.parent === m.id ? mar.child : mar.parent;
-                    if (lineageData.some(l => l.child === spouseId)) { 
-                        isInLawToSomeoneWithParents = true; 
-                        break; 
-                    }
+                    if (lineageData.some(l => l.child === spouseId)) { isInLawToSomeoneWithParents = true; break; }
                 }
 
                 if (!isInLawToSomeoneWithParents) {
@@ -264,11 +259,14 @@ function renderTree(sourceRoot, container) {
         .attr("d", d => {
             const p = d.source.data, c = d.target.data;
             let startX = d.source.x;
-            if (p.marriages) {
-                // Match exact UID to originate the path from the correct spouse box
-                const mIdx = p.marriages.findIndex(m => m.children && m.children.some(child => child.uid === c.uid));
-                if (mIdx !== -1) startX += (mIdx + 1) * (boxW + 10);
+            
+            // UPDATED: Originates the link perfectly from the center of the mother-father container
+            if (p.marriages && p.marriages.length > 0) {
+                const mCount = p.marriages.length;
+                const totalW = boxW + (mCount * (boxW + 10));
+                startX += (totalW / 2 - boxW / 2);
             }
+            
             return linkGen({ source: {x: startX, y: d.source.y + boxH/2}, target: {x: d.target.x, y: d.target.y - boxH/2} });
         });
 
