@@ -134,17 +134,16 @@ async function init() {
             });
         }
 
-        // PATH-SPECIFIC BUILD LOGIC
-        // This ensures children can be drawn under both Father's and Mother's families simultaneously
         function build(id, visitedPath = new Set()) {
             const u = mDataMap.get(id);
-            // Block infinite loops (circular lineage) but allow cross-branch duplications
             if (!u || visitedPath.has(id)) return null;
             
             const currentPath = new Set(visitedPath);
             currentPath.add(id);
 
             const marriages = marriageData.filter(m => m.parent === id || m.child === id);
+            const globalAssignedChildren = new Set();
+            
             const marriageDetails = marriages.map(mar => {
                 const spouseId = mar.parent === id ? mar.child : mar.parent;
                 const spouse = mDataMap.get(spouseId);
@@ -154,21 +153,38 @@ async function init() {
 
                 const k = mar.parent + '+' + mar.child, alt = mar.child + '+' + mar.parent;
                 
-                // Children generated here use the cloned path, allowing them to render in both families
-                const children = lineageData.filter(r => r.parent === k || r.parent === alt)
-                    .map(r => build(r.child, spousePath)).filter(x => x);
+                // Cross-Parent Data Scan: Pulls in children linked to A, linked to B, or explicitly linked to A+B
+                const childIds = lineageData
+                    .filter(r => r.parent === k || r.parent === alt || r.parent === spouseId || r.parent === id)
+                    .map(r => r.child);
+                
+                const childrenForThisMarriage = [];
+                childIds.forEach(cid => {
+                    if (!globalAssignedChildren.has(cid)) {
+                        globalAssignedChildren.add(cid);
+                        childrenForThisMarriage.push(cid);
+                    }
+                });
+
+                const children = childrenForThisMarriage
+                    .map(childId => build(childId, spousePath))
+                    .filter(x => x);
+                    
                 return { spouse, children: children.length ? children : null };
             });
 
-            const soloChildren = lineageData.filter(r => r.parent === id)
-                .map(r => build(r.child, currentPath)).filter(x => x);
+            // Catch any remaining solo children not assigned to a marriage
+            const soloChildren = lineageData
+                .filter(r => r.parent === id && !globalAssignedChildren.has(r.child))
+                .map(r => build(r.child, currentPath))
+                .filter(x => x);
             
             const allChildren = [...soloChildren, ...marriageDetails.flatMap(m => m.children || [])];
             const totalDesc = allChildren.reduce((acc, child) => acc + 1 + (child._total || 0), 0);
 
             return { 
                 ...u, 
-                uid: u.id + '-' + Math.random().toString(36).substr(2, 9), // Distinct UID for D3 to track duplicates properly
+                uid: u.id + '-' + Math.random().toString(36).substr(2, 9), // Ensures D3 renders multi-family identical children cleanly
                 marriages: marriageDetails, 
                 children: allChildren.length ? allChildren : null,
                 _direct: allChildren.length,
@@ -176,41 +192,43 @@ async function init() {
             };
         }
 
-        const universeGhost = { id: "UNIVERSE", uid: "UNIV-001", name: "Universe", children: [build('DH'), build('NP')].filter(x => x) };
+        const universeGhost = { id: "UNIVERSE", uid: "UNIV", name: "Universe", children: [build('DH'), build('NP')].filter(x => x) };
         root = d3.hierarchy(universeGhost);
         root.descendants().forEach(d => { if(d.depth > 1 && d.children) { d._children = d.children; d.children = null; } });
 
-        const processedUnmappedPairs = new Set();
+        const unmappedRootsProcessed = new Set();
         const unmappedRootsData = [];
-
+        
         const potentialRoots = members.filter(m => !mappedIds.has(m.id) && !lineageData.some(l => l.child === m.id));
 
         potentialRoots.forEach(m => {
-            const marriages = marriageData.filter(mar => mar.parent === m.id || mar.child === m.id);
-            let isInLawToSomeoneWithParents = false;
-            let isDuplicatePair = false;
-            
-            for (let mar of marriages) {
-                const spouseId = mar.parent === m.id ? mar.child : mar.parent;
-                if (lineageData.some(l => l.child === spouseId)) { isInLawToSomeoneWithParents = true; break; }
+            if (!unmappedRootsProcessed.has(m.id)) {
+                const marriages = marriageData.filter(mar => mar.parent === m.id || mar.child === m.id);
+                let isInLawToSomeoneWithParents = false;
                 
-                const pairKey = [m.id, spouseId].sort().join('-');
-                if (processedUnmappedPairs.has(pairKey)) { isDuplicatePair = true; }
-            }
+                for (let mar of marriages) {
+                    const spouseId = mar.parent === m.id ? mar.child : mar.parent;
+                    if (lineageData.some(l => l.child === spouseId)) { 
+                        isInLawToSomeoneWithParents = true; 
+                        break; 
+                    }
+                }
 
-            if (!isInLawToSomeoneWithParents && !isDuplicatePair) {
-                const treeNode = build(m.id);
-                if (treeNode && treeNode._total > 0) {
-                    unmappedRootsData.push(treeNode);
-                    marriages.forEach(mar => {
-                        const spouseId = mar.parent === m.id ? mar.child : mar.parent;
-                        processedUnmappedPairs.add([m.id, spouseId].sort().join('-'));
-                    });
+                if (!isInLawToSomeoneWithParents) {
+                    const treeNode = build(m.id);
+                    if (treeNode && treeNode._total > 0) {
+                        unmappedRootsData.push(treeNode);
+                        unmappedRootsProcessed.add(m.id);
+                        marriages.forEach(mar => {
+                            const spouseId = mar.parent === m.id ? mar.child : mar.parent;
+                            unmappedRootsProcessed.add(spouseId);
+                        });
+                    }
                 }
             }
         });
 
-        unmappedRoot = d3.hierarchy({ id: "GHOST", uid: "GHOST-001", children: unmappedRootsData });
+        unmappedRoot = d3.hierarchy({ id: "GHOST", uid: "GHOST", children: unmappedRootsData });
         unmappedRoot.descendants().forEach(d => { if(d.depth > 0 && d.children) { d._children = d.children; d.children = null; } });
 
         svg = d3.select("#canvas").append("svg").attr("width", canvasWidth).attr("height", canvasHeight);
@@ -239,7 +257,6 @@ function renderTree(sourceRoot, container) {
     const links = sourceRoot.links().filter(d => d.source.depth > 0);
     const linkGen = d3.linkVertical().x(d => d.x).y(d => d.y);
 
-    // Use UID to ensure D3 creates paths reliably for duplicated members
     const link = container.selectAll(".link").data(links, d => d.target.data.uid + "-" + d.source.data.uid);
     link.exit().remove();
     link.enter().append("path").attr("class", "link")
@@ -248,7 +265,8 @@ function renderTree(sourceRoot, container) {
             const p = d.source.data, c = d.target.data;
             let startX = d.source.x;
             if (p.marriages) {
-                const mIdx = p.marriages.findIndex(m => m.children && m.children.some(child => child.id === c.id));
+                // Match exact UID to originate the path from the correct spouse box
+                const mIdx = p.marriages.findIndex(m => m.children && m.children.some(child => child.uid === c.uid));
                 if (mIdx !== -1) startX += (mIdx + 1) * (boxW + 10);
             }
             return linkGen({ source: {x: startX, y: d.source.y + boxH/2}, target: {x: d.target.x, y: d.target.y - boxH/2} });
@@ -326,7 +344,7 @@ function drawBox(container, d, o) {
 }
 
 function findPrimaryNode(node, id) {
-    if (node.data.id === id) return node;
+    if (node.data.id === id || node.data.realId === id) return node;
     let kids = node.children || node._children;
     if (kids) {
         for (let i = 0; i < kids.length; i++) {
